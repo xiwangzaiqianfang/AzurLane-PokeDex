@@ -199,11 +199,28 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "错误", f"导入失败: {e}")
 
     def update_online(self):
-        # 示例 URL，需要替换为实际 GitHub 原始文件地址
-        url = "https://raw.githubusercontent.com/yourname/azurlane-pokedex/main/ships.json"
+        """从网络更新数据"""
+    # 可以弹出一个对话框让用户输入 URL，或者使用固定的默认 URL
+        default_url = "https://raw.githubusercontent.com/xiwangzaiqianfang/AzurLane-Dex/main/ships.json"
+    
+    # 简单的确认对话框
+        reply = QMessageBox.question(
+            self, 
+            "确认更新", 
+            f"将从以下地址更新数据：\n{default_url}\n\n您的当前状态（拥有、突破等）会被保留，是否继续？",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.No:
+            return
         try:
-            self.manager.update_from_github(url)
-            self.apply_filter({})
-            QMessageBox.information(self, "完成", "数据更新成功！")
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            success = self.manager.update_from_github(default_url)
+            if success:
+                self.apply_filter(self.filter_bar.get_criteria())
+                QMessageBox.information(self, "完成", "数据更新成功！")
+            else:
+                QMessageBox.information(self, "无需更新", "当前已是最新版本。")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"网络更新失败: {e}")
+            QMessageBox.critical(self, "错误", f"更新失败：{str(e)}")
+        finally:
+            QApplication.restoreOverrideCursor()

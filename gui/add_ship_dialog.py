@@ -22,6 +22,23 @@ class AddShipDialog(QDialog):
         # ---- 基本信息区域 ----
         basic_group = QGroupBox("基本信息")
         basic_form = QFormLayout(basic_group)
+        id_layout = QHBoxLayout()
+        self.id_spin = QSpinBox()
+        self.id_spin.setRange(0, 9999)       # 允许范围，0 表示自动分配
+        self.id_spin.setSpecialValueText("自动")  # 显示“自动”表示自动分配
+        self.id_spin.setValue(0)              # 默认自动
+        self.id_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.id_spin.setFixedWidth(80)
+        id_minus = QPushButton("-")
+        id_plus = QPushButton("+")
+        id_minus.setFixedSize(25, 25)
+        id_plus.setFixedSize(25, 25)
+        id_minus.clicked.connect(lambda: self.id_spin.setValue(self.id_spin.value() - 1))
+        id_plus.clicked.connect(lambda: self.id_spin.setValue(self.id_spin.value() + 1))
+        id_layout.addWidget(self.id_spin)
+        id_layout.addWidget(id_minus)
+        id_layout.addWidget(id_plus)
+        basic_form.addRow("编号 (0=自动):", self.id_spin)
         self.name_edit = QLineEdit()
         self.faction_combo = QComboBox()
         self.faction_combo.addItems(["白鹰", "皇家", "重樱", "铁血", "东煌", "撒丁帝国", "北方联合", "自由鸢尾", "维希教廷", "郁金王国", "飓风", "META", "其他"])
@@ -38,7 +55,7 @@ class AddShipDialog(QDialog):
         self.is_permanent_cb.setChecked(True)
         self.debut_event_edit = QLineEdit()
         self.release_date_edit = QLineEdit()
-        self.notes_edit = QTextEdit()
+        self.notes_edit = QLineEdit()
         self.notes_edit.setMaximumHeight(80)
         self.image_path_edit = QLineEdit()
 
@@ -60,7 +77,7 @@ class AddShipDialog(QDialog):
         content_layout.addWidget(basic_group)
 
         # ---- 科技点组（三阶段） ----
-        tech_group = QGroupBox("科技点数值 (获得 / 满破 / 120级)")
+        tech_group = QGroupBox("属性加成数值 (获得 / 满破 / 120级)")
         tech_layout = QGridLayout(tech_group)
 
         # 表头
@@ -127,13 +144,17 @@ class AddShipDialog(QDialog):
         content_layout.addWidget(button_box)
 
     def get_ship(self):
+        # 获取用户输入的 ID
+        manual_id = self.id_spin.value()
+        ship_id = 0 if manual_id == 0 else manual_id  # 0 表示需要自动分配
+
         # 从科技点SpinBox收集值
         tech_kwargs = {}
         for key, spin in self.tech_spins.items():
             tech_kwargs[key] = spin.value()
         
         ship = Ship(
-            id=0, # 将由管理器自动分配
+            id=ship_id, # 将由管理器自动分配
             name=self.name_edit.text(),
             faction=self.faction_combo.currentText(),
             ship_class=self.class_combo.currentText(),
