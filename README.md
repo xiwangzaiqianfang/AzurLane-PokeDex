@@ -80,4 +80,4 @@ git push origin feature/AmazingFeature
 
 ## 许可证
 本项目采用 CC BY-NC-SA 4.0 许可证，即您可以自由分享、修改，但必须署名、非商业性使用，并以相同方式共享。完整许可证文本见 LICENSE.md 文件。
-项目中的游戏数据（舰船名称、阵营、舰种等）版权归原游戏开发商所有，摘取自碧蓝航线wiki（https://wiki.biligame.com/blhx/），此处仅作个人学习研究之用。
+项目中的游戏数据（舰船名称、阵营、舰种等）版权归原游戏开发商所有，摘取自碧蓝航线wiki（https://wiki.biligame.com/blhx），此处仅作个人学习研究之用。
