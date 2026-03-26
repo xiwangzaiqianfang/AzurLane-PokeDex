@@ -1,17 +1,21 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QCheckBox, QSpinBox, QPushButton,
-                               QGroupBox, QScrollArea, QGridLayout, QAbstractSpinBox, QFrame)
+                               QGroupBox, QScrollArea, QGridLayout, QAbstractSpinBox, QFrame, QInputDialog, QLineEdit, QMessageBox, QDialog)
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QPixmap
 import os
+from gui.edit_ship_dialog import EditShipDialog
 
 class DetailWidget(QWidget):
     data_changed = Signal(object)
 
     def __init__(self):
         super().__init__()
+        self.setWindowTitle("编辑舰船")
         self.setObjectName("detailWidget")
         self.current_ship = None
+        self.main_window = None
+        self.manager = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -76,65 +80,52 @@ class DetailWidget(QWidget):
         state_card.setObjectName("card")
         state_layout = QVBoxLayout(state_card)
         state_layout.setContentsMargins(10, 10, 10, 10)
-        #state_group = QGroupBox("状态")
-        #state_layout = QHBoxLayout(state_group)
-        title_label = QLabel("状态")
-        title_label.setObjectName("cardTitle")
-        title_label.setStyleSheet("font-weight: bold;")
-        state_layout.addWidget(title_label)
 
+        state_title = QLabel("状态")
+        state_title.setObjectName("cardTitle")
+        state_layout.addWidget(state_title)
+
+        # 水平布局放置复选框和突破控件
         hbox = QHBoxLayout()
-        hbox.setSpacing(5)
-        self.owned_cb = QCheckBox("已获得")
-        #self.owned_cb.stateChanged.connect(self.on_owned_changed)
-        self.owned_cb.clicked.connect(self.on_owned_clicked)
+        hbox.setSpacing(8)
 
-        # 突破控件
-        self.breakthrough_layout = QHBoxLayout()
+        self.owned_cb = QCheckBox("已获得")
+        self.owned_cb.clicked.connect(self.on_owned_clicked)
+        hbox.addWidget(self.owned_cb)
+
+        # 突破控件（水平布局）
         self.breakthrough_spin = QSpinBox()
         self.breakthrough_spin.setRange(0, 3)
         self.breakthrough_spin.setSuffix(" 破")
         self.breakthrough_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.breakthrough_spin.valueChanged.connect(self.on_breakthrough_changed)
+
         self.breakthrough_minus = QPushButton("-")
         self.breakthrough_plus = QPushButton("+")
-        self.breakthrough_minus.clicked.connect(lambda: self.breakthrough_spin.setValue(self.breakthrough_spin.value()-1))
-        self.breakthrough_plus.clicked.connect(lambda: self.breakthrough_spin.setValue(self.breakthrough_spin.value()+1))
-        self.breakthrough_layout.addWidget(self.breakthrough_minus)
-        self.breakthrough_layout.addWidget(self.breakthrough_spin)
-        self.breakthrough_layout.addWidget(self.breakthrough_plus)
+        self.breakthrough_minus.clicked.connect(lambda: self.breakthrough_spin.setValue(self.breakthrough_spin.value() - 1))
+        self.breakthrough_plus.clicked.connect(lambda: self.breakthrough_spin.setValue(self.breakthrough_spin.value() + 1))
 
         bt_layout = QHBoxLayout()
         bt_layout.setSpacing(2)
         bt_layout.addWidget(self.breakthrough_minus)
         bt_layout.addWidget(self.breakthrough_spin)
         bt_layout.addWidget(self.breakthrough_plus)
+        hbox.addLayout(bt_layout)
+
+        self.oath_cb = QCheckBox("已誓约")
+        self.oath_cb.clicked.connect(self.on_oath_clicked)
+        hbox.addWidget(self.oath_cb)
+
+        self.level120_cb = QCheckBox("120级")
+        self.level120_cb.clicked.connect(self.on_level120_clicked)
+        hbox.addWidget(self.level120_cb)
 
         self.remodeled_cb = QCheckBox("已改造")
         self.remodeled_cb.clicked.connect(self.on_remodeled_clicked)
-        card_layout.addWidget(self.remodeled_cb)
+        hbox.addWidget(self.remodeled_cb)
 
-        self.oath_cb = QCheckBox("已誓约")
-        #self.oath_cb.stateChanged.connect(self.on_oath_changed)
-        self.oath_cb.clicked.connect(self.on_oath_clicked)
-
-        self.level120_cb = QCheckBox("120级")
-        #self.level120_cb.stateChanged.connect(self.on_level120_changed)
-        self.level120_cb.clicked.connect(self.on_level120_clicked)
-
-        #state_layout.addWidget(self.owned_cb)
-        #state_layout.addLayout(self.breakthrough_layout)
-        #state_layout.addWidget(self.oath_cb)
-        #state_layout.addWidget(self.level120_cb)
-        #state_layout.addStretch()
-        hbox.addWidget(self.owned_cb)
-        hbox.addLayout(self.breakthrough_layout)
-        hbox.addWidget(self.oath_cb)
-        hbox.addWidget(self.level120_cb)
         hbox.addStretch()
-        #layout.addWidget(state_group)
         state_layout.addLayout(hbox)
-
         layout.addWidget(state_card)
 
         # ---- 属性加成 (动态计算总和) ----
@@ -184,11 +175,13 @@ class DetailWidget(QWidget):
         self.attr_bonus_label = QLabel()
         self.affects_label = QLabel()
         self.tech_points_total_label = QLabel()
-        self.bonus_obtain_label = QLabel()
-        self.bonus_120_label = QLabel()
-        attr_form.addRow("获得科技点", self.tech_points_total_label)
-        attr_form.addRow("满破科技点：", self.bonus_obtain_label)
-        attr_form.addRow("120级科技点：", self.bonus_120_label)
+        self.tech_obtain_label = QLabel()
+        self.tech_120_label = QLabel()
+        self.tech_max_label = QLabel()
+        attr_form.addRow("科技点总和", self.tech_points_total_label)
+        attr_form.addRow("获得科技点", self.tech_obtain_label)
+        attr_form.addRow("满破科技点：", self.tech_max_label)
+        attr_form.addRow("120级科技点：", self.tech_120_label)
         attr_form.addRow("属性加成：", self.attr_bonus_label)
         attr_form.addRow("适用舰种：", self.affects_label)
         tech_layout.addLayout(attr_form)
@@ -261,10 +254,13 @@ class DetailWidget(QWidget):
         layout.addStretch()
 
     def set_ship(self, ship):
+        print(f"set_ship called with {ship}")
         self.current_ship = ship
+        print(f"current_ship {ship}")
         self.update_display()
 
     def clear(self):
+        print("clear 被调用")
         self.current_ship = None
         self.id_label.clear()
         self.name_label.clear()
@@ -291,6 +287,7 @@ class DetailWidget(QWidget):
         self.image_label.clear()
 
     def update_display(self):
+        #print(f"update_display: current_ship = {self.current_ship}")
         if not self.current_ship:
             return
         s = self.current_ship
@@ -354,7 +351,10 @@ class DetailWidget(QWidget):
 
         # 显示科技点总和
         total_tech = s.tech_points_obtain + s.tech_points_max + s.tech_points_120
-        self.tech_points_total_label.setText(f"科技点总和: {total_tech} (获得 {s.tech_points_obtain} + 满破 {s.tech_points_max} + 120级 {s.tech_points_120})")
+        self.tech_points_total_label.setText(f"{total_tech}")
+        self.tech_obtain_label.setText(str(s.tech_points_obtain))
+        self.tech_max_label.setText(str(s.tech_points_max))
+        self.tech_120_label.setText(str(s.tech_points_120))
 
         # 获取方式
         self.acquire_main_label.setText(s.acquire_main)
@@ -423,6 +423,42 @@ class DetailWidget(QWidget):
             self.data_changed.emit(self.current_ship)
 
     def open_edit_dialog(self):
-        # 可以扩展为编辑科技点等详细信息的对话框
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "提示", "编辑功能可通过直接修改 JSON 文件实现。")
+        # 尝试从主窗口获取当前选中的船
+        #if self.parent() and hasattr(self.parent(), 'get_current_ship'):
+        #    ship = self.parent().get_current_ship()
+        #    if ship is None:
+        #        print("无法获取当前选中的舰船")
+        #        return
+        #else:
+            # 备用方案：使用当前保存的船
+        #print("=== 进入 open_edit_dialog ===")
+        #print(f"self.current_ship = {self.current_ship}")
+        #print(f"self.main_window = {self.main_window}")
+        
+        ship = self.current_ship
+        if ship is None and self.main_window:
+            ship = self.main_window.get_current_ship()
+        if ship is None:
+            QMessageBox.warning(self, "错误", "无法获取当前选中的舰船。")
+            return
+    
+        # 密码验证等...
+        if self.manager:# and self.manager.need_password_for_edit():
+            pwd, ok = QInputDialog.getText(self, "验证", "请输入编辑密码:", QLineEdit.Password)
+            if not ok or pwd != self.manager.get_edit_password():
+                QMessageBox.warning(self, "错误", "密码错误，无法编辑。")
+                return
+            password_used = True
+        else:
+            password_used = False
+
+        dlg = EditShipDialog(ship, parent=self)
+        if dlg.exec() == QDialog.Accepted:
+            changes = dlg.get_changes()
+            if changes and self.manager:
+                self.manager.log_edit(ship.id, changes, password_used)
+            new_ship = dlg.get_ship()
+            # 更新详情页的 current_ship
+            self.current_ship = new_ship
+            self.data_changed.emit(new_ship)
+            QMessageBox.information(self, "成功", "舰船数据已更新。")

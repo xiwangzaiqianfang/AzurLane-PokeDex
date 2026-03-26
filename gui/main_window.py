@@ -2,8 +2,8 @@ import sys
 import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                                 QSplitter, QMessageBox, QFileDialog, QApplication, QPushButton, QDialog, QLabel)
-from PySide6.QtCore import Qt, QSettings, QPoint, QPropertyAnimation, QEasingCurve, Signal
-from PySide6.QtGui import QFont, QIcon, QPainter, QBrush, QPen, QColor, QLinearGradient, QPalette, QPixmap
+from PySide6.QtCore import Qt, QSettings, QPoint, QPropertyAnimation, QEasingCurve, Signal, QUrl
+from PySide6.QtGui import QFont, QIcon, QPainter, QBrush, QPen, QColor, QLinearGradient, QPalette, QPixmap, QDesktopServices
 
 import ctypes
 from ctypes import wintypes
@@ -120,6 +120,7 @@ class MainWindow(QMainWindow):
 
         # 右侧详情
         self.detail_widget = DetailWidget()
+        self.detail_widget.main_window = self
         self.splitter.addWidget(self.detail_widget)
 
         # 设置初始比例
@@ -128,6 +129,8 @@ class MainWindow(QMainWindow):
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(12)
 
         # 连接信号
         self.filter_bar.filter_changed.connect(self.apply_filter)
@@ -138,6 +141,7 @@ class MainWindow(QMainWindow):
         self.filter_bar.export_clicked.connect(self.export_data)
         self.filter_bar.import_clicked.connect(self.import_data)
         self.filter_bar.update_online_clicked.connect(self.update_online)
+        self.filter_bar.sort_order_changed.connect(self.on_sort_order_changed)
 
         self.ship_list.current_ship_changed.connect(self.on_ship_selected)
         self.ship_list.sort_requested.connect(self.on_sort_requested)
@@ -153,8 +157,10 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("菲梦林光", "AzurLaneDex")
         # 初始化数据管理器
         self.manager = ShipManager("ships.json")
+        self.filter_bar.manager = self.manager
         ship_names = [ship.name for ship in self.manager.ships]
         self.filter_bar.set_ship_names(ship_names)
+
 
         # 加载主题
         self.load_theme()
@@ -212,6 +218,7 @@ class MainWindow(QMainWindow):
         self.apply_filter({})
 
     def on_ship_selected(self, ship):
+        print(f"on_ship_selected: ship = {ship}")
         if ship:
             self.detail_widget.set_ship(ship)
         else:
@@ -302,29 +309,60 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "错误", f"导入失败: {e}")
 
     def update_online(self):
-        """从网络更新数据"""
-    # 可以弹出一个对话框让用户输入 URL，或者使用固定的默认 URL
-        default_url = "https://raw.githubusercontent.com/xiwangzaiqianfang/AzurLane-Dex/main/ships.json"
-    
-    # 简单的确认对话框
         reply = QMessageBox.question(
-            self, 
-            "确认更新", 
-            f"将从以下地址更新数据：\n{default_url}\n\n您的当前状态（拥有、突破等）会被保留，是否继续？",
+            self,
+            "检查更新",
+            "是否检查程序新版本？\n\n注意：数据更新会同时进行，您可以选择跳过程序更新。",
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.No:
             return
+    
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
+            # 检查程序版本
+            latest_version = self.manager.get_latest_version()
+            current_version = "1.0.0"  # 请将当前版本硬编码或从配置文件读取
+            if latest_version and latest_version > current_version:
+                ret = QMessageBox.question(
+                    self,
+                    "发现新版本",
+                    f"发现新版本 {latest_version}（当前 {current_version}）\n\n是否前往下载页面？",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if ret == QMessageBox.Yes:
+                    QDesktopServices.openUrl(QUrl("https://github.com/xiwangzaiqianfang/AzurLane-Dex/releases/latest"))
+            else:
+                QMessageBox.information(self, "检查更新", "当前已是最新版本。")
+        
+            """从网络更新数据"""
+            # 可以弹出一个对话框让用户输入 URL，或者使用固定的默认 URL
+            default_url = "https://raw.githubusercontent.com/xiwangzaiqianfang/AzurLane-Dex/main/ships.json"
             success = self.manager.update_from_github(default_url)
             if success:
-                ship_names = [ship.name for ship in self.manager.ships]
-                self.filter_bar.set_ship_names(ship_names)
                 self.apply_filter(self.filter_bar.get_criteria())
                 QMessageBox.information(self, "完成", "数据更新成功！")
             else:
-                QMessageBox.information(self, "无需更新", "当前已是最新版本。")
+                QMessageBox.information(self, "无需更新", "数据已是最新版本。")
+            # 简单的确认对话框
+            #reply = QMessageBox.question(
+            #    self, 
+            #    "确认更新", 
+            #    f"将从以下地址更新数据：\n{default_url}\n\n您的当前状态（拥有、突破等）会被保留，是否继续？",
+            #    QMessageBox.Yes | QMessageBox.No
+            #)
+        #if reply == QMessageBox.No:
+        #    return
+        #try:
+        #    QApplication.setOverrideCursor(Qt.WaitCursor)
+        #    success = self.manager.update_from_github(default_url)
+        #    if success:
+        #        ship_names = [ship.name for ship in self.manager.ships]
+        #        self.filter_bar.set_ship_names(ship_names)
+        #        self.apply_filter(self.filter_bar.get_criteria())
+        #        QMessageBox.information(self, "完成", "数据更新成功！")
+        #    else:
+        #        QMessageBox.information(self, "无需更新", "当前已是最新版本。")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"更新失败：{str(e)}")
         finally:
@@ -341,6 +379,22 @@ class MainWindow(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         super().showEvent(event)
+
+    def get_current_ship(self):
+        print("====DEBUG====")
+        print("main_window.get_current_ship 被调用")
+        ship = self.ship_list.get_current_ship()
+        print(f"从 ship_list 获取到的 ship: {ship}")
+        return ship
+
+    def on_sort_order_changed(self, key, reverse):
+        """用户改变排序方式时，重新排序当前列表"""
+        # 获取当前显示的舰船列表（即已经过筛选的列表）
+        current_ships = self.ship_list.current_ships
+        sorted_ships = self.manager.sort(current_ships, key, reverse)
+        self.ship_list.set_ships(sorted_ships)
+        # 注意：由于排序改变了列表顺序，但筛选条件未变，我们不需要重新应用筛选。
+        # 同时，当前选中的船可能改变，但 set_ships 会自动选中第一行。
 
     #def resizeEvent(self, event):
     #    super().resizeEvent(event)

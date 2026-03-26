@@ -1,6 +1,7 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
 from gui.main_window import MainWindow
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 
@@ -20,7 +21,10 @@ ship_json = resource_path("ships.json")
 def main():
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("app_icon.ico")))
-
+    #app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    #app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    app.setAttribute(Qt.AA_SynthesizeTouchForUnhandledMouseEvents, True)
+    
     # 在创建 app 后，加载字体
     font_id = QFontDatabase.addApplicationFont("font/MiSansVF_4.009.ttf")
     #print("主界面全局字体ID:", font_id)

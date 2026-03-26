@@ -2,6 +2,8 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QComboBox, QCheckBox, QPush
 from PySide6.QtCore import Signal, QStringListModel
 from PySide6.QtGui import QAction, QIcon, QFont, QFontDatabase, Qt
 import os
+import hashlib
+from manager import ShipManager
 from gui.advanced_filter_panel import AdvancedFilterPanel
 
 class FilterBar(QWidget):
@@ -15,9 +17,11 @@ class FilterBar(QWidget):
     update_online_clicked = Signal()
     fleet_tech_clicked = Signal()
     theme_toggled = Signal()
+    sort_order_changed = Signal(str, bool)
 
     def __init__(self):
         super().__init__()
+        self.manager = None
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
@@ -45,6 +49,20 @@ class FilterBar(QWidget):
         self.rarity_combo.addItems(["全部", "普通", "稀有", "精锐", "超稀有", "海上传奇"])
         self.rarity_combo.currentTextChanged.connect(self.on_filter_changed)
         row1.addWidget(self.rarity_combo)
+
+        # 排序方式
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["按编号", "按名称", "按稀有度", "按誓约", "按图鉴顺序", "按实装时间"])
+        self.sort_combo.currentIndexChanged.connect(self.on_sort_changed)
+        row1.addWidget(QLabel("排序:"))
+        row1.addWidget(self.sort_combo)
+
+        # 升序/降序按钮
+        self.sort_reverse_btn = QPushButton("▼")
+        self.sort_reverse_btn.setFixedSize(30, 25)
+        self.sort_reverse_btn.setCheckable(True)
+        self.sort_reverse_btn.clicked.connect(self.on_sort_changed)
+        row1.addWidget(self.sort_reverse_btn)
 
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("搜索舰船名...")
@@ -103,6 +121,10 @@ class FilterBar(QWidget):
         action_switch_file = QAction("切换账号", self)
         action_switch_file.triggered.connect(self.switch_file_clicked.emit)
         menu.addAction(action_switch_file)
+
+        action_set_edit_pwd = QAction("设置编辑密码", self)
+        action_set_edit_pwd.triggered.connect(self.set_edit_password)
+        menu.addAction(action_set_edit_pwd)
 
         action_export = QAction("导出数据", self)
         action_export.triggered.connect(self.export_clicked.emit)
@@ -235,6 +257,8 @@ class FilterBar(QWidget):
         self.faction_combo.setCurrentText("全部")
         self.class_combo.setCurrentText("全部")
         self.rarity_combo.setCurrentText("全部")
+        self.sort_combo.setCurrentIndex(0)
+        self.sort_reverse_btn.setChecked(False)
         self.search_edit.clear()
         if self.adv_panel and self.adv_panel.isVisible():
             self.adv_panel.remodel_cb.setChecked(False)
@@ -303,6 +327,46 @@ class FilterBar(QWidget):
         dlg = AdvancedFilterDialog(self.get_criteria(), self)
         dlg.filter_applied.connect(self.on_advanced_filter_applied)
         dlg.exec_()
+
+    def on_sort_changed(self):
+        """排序选项变化时发射信号"""
+        index = self.sort_combo.currentIndex()
+        reverse = self.sort_reverse_btn.isChecked()
+        # 映射下拉选项到 manager.sort 的 key
+        key_map = {
+            0: "id",
+            1: "name",
+            2: "rarity",
+            3: "oath",
+            4: "game_order",
+            5: "release_date"
+        }
+        key = key_map.get(index, "id")
+        self.sort_order_changed.emit(key, reverse)
+
+    def set_edit_password(self):
+        from PySide6.QtWidgets import QInputDialog, QLineEdit, QMessageBox
+        if not self.manager:
+            return
+        if self.manager.need_password_for_edit():
+            # 请求原密码
+            old_pwd, ok = QInputDialog.getText(self, "验证原密码", "请输入当前编辑密码:", QLineEdit.Password)
+            if not ok:
+                return
+            if not self.manager.verify_edit_password(old_pwd):
+                QMessageBox.warning(self, "错误", "原密码错误，无法修改。")
+                return
+        # 请求新密码
+        new_pwd, ok = QInputDialog.getText(self, "设置编辑密码", 
+                                       "请输入新密码（留空以清除）:", 
+                                       QLineEdit.Password)
+        if ok:
+            #self.manager = ShipManager("config.json")
+            self.manager.set_edit_password(new_pwd)
+            if new_pwd:
+                QMessageBox.information(self, "完成", "编辑密码已设置。")
+            else:
+                QMessageBox.information(self, "完成", "编辑密码已清除。")
 
     #def on_more_menu_shown(self):
     #    self.more_btn.setText(self.base_text + " ")

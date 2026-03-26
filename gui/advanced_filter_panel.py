@@ -21,8 +21,8 @@ class AdvancedFilterPanel(QWidget):
         main_layout.addWidget(title_label)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(8)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(5)
 
         checkboxes = [
             (0, 0, "已获得", "owned"),

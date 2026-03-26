@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QColor, QBrush
 
@@ -28,6 +28,9 @@ class ShipListWidget(QTableWidget):
         self.setSelectionMode(QTableWidget.SingleSelection)
         self.itemSelectionChanged.connect(self.on_selection_changed)
         self.setEditTriggers(QTableWidget.NoEditTriggers)
+        #self.setDragEnabled(False)          # 允许拖动选择（不影响触摸滚动）
+        self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # 平滑滚动
+        self.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
 
         self.current_ships = []  # 当前显示的 Ship 对象列表，与行对应
 
@@ -98,3 +101,9 @@ class ShipListWidget(QTableWidget):
         if logicalIndex in key_map:
             reverse = (order == Qt.DescendingOrder)
             self.sort_requested.emit(key_map[logicalIndex], reverse)
+
+    def get_current_ship(self):
+        row = self.currentRow()
+        if 0 <= row < len(self.current_ships):
+            return self.current_ships[row]
+        return None

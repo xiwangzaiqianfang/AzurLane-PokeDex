@@ -63,6 +63,22 @@ class AddShipDialog(QDialog):
         id_layout.addWidget(id_plus)
         basic_form.addRow("编号 (0=自动):", id_layout)
 
+        order_layout = QHBoxLayout()
+        self.game_order_spin = QSpinBox()
+        self.game_order_spin.setRange(0, 9999)
+        self.game_order_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.game_order_spin.setFixedWidth(80)
+        order_minus = QPushButton("-")
+        order_plus = QPushButton("+")
+        order_minus.setFixedSize(35, 30)
+        order_plus.setFixedSize(35, 30)
+        order_minus.clicked.connect(lambda: self.game_order_spin.setValue(self.game_order_spin.value() - 1))
+        order_plus.clicked.connect(lambda: self.game_order_spin.setValue(self.game_order_spin.value() + 1))
+        order_layout.addWidget(self.game_order_spin)
+        order_layout.addWidget(order_minus)
+        order_layout.addWidget(order_plus)
+        basic_form.addRow("游戏内图鉴顺序:", order_layout)
+
         self.name_edit = QLineEdit()
         self.faction_combo = QComboBox()
         self.faction_combo.addItems(["请选择", "白鹰", "皇家", "重樱", "铁血", "东煌", "撒丁帝国", "北方联合", "自由鸢尾", "维希教廷", "郁金王国", "飓风", "META", "其他"])
@@ -137,8 +153,8 @@ class AddShipDialog(QDialog):
         #attr_layout.setVerticalSpacing(5)     # 可选，调整行间距
         # 使用网格布局放置控件
         grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(5)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(8)
         grid.addWidget(QLabel("属性"), 0, 0)
         grid.addWidget(QLabel("获得"), 0, 1)
         grid.addWidget(QLabel("120级"), 0, 2)
@@ -362,6 +378,8 @@ class AddShipDialog(QDialog):
         # 为满破阶段添加默认值0
         for base in [item[1] for item in self.tech_items]:
             attr_kwargs[f"tech_{base}_max"] = 0
+            
+        game_order = self.game_order_spin.value()
 
         # 收集科技点总和
         tech_points_obtain = self.tech_points_obtain.value()
@@ -378,6 +396,7 @@ class AddShipDialog(QDialog):
         # 合并所有参数到字典
         ship_kwargs = {
             "id": ship_id,
+            "game_order": game_order,
             "name": self.name_edit.text(),
             "faction": self.faction_combo.currentText(),
             "ship_class": self.class_combo.currentText(),

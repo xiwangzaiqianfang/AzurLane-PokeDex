@@ -1,15 +1,29 @@
 import requests
 import dataclasses
+import hashlib
 import json
 import os
+import certifi
+import datetime
 from models import Ship
 from typing import Optional
+from dataclasses import asdict
+
+SALT = "AzurLaneDex_Salt_2025"
+
+def hash_password(password: str) -> str:
+    """对密码进行 SHA256 哈希，返回十六进制字符串"""
+    if not password:
+        return ""
+    return hashlib.sha256((password + SALT).encode()).hexdigest()
 
 class ShipManager:
     REQUIRED_FIELDS = set(Ship.__dataclass_fields__.keys())
 
     def __init__(self, filepath="ships.json"):
         self.filepath = filepath
+        self.config_file = "config.json"
+        self.config = self.load_config()
         self.version = "0.0"
         self.ships: list[Ship] = []
         self.load()
@@ -86,17 +100,77 @@ class ShipManager:
                 filtered_item = {k: v for k, v in item.items() if k in ship_fields}
                 migrated.append(filtered_item)
 
+
             # 转换为 Ship 对象
             self.ships = [Ship.from_dict(item) for item in migrated]
             print(f"[INFO] 成功加载 {len(self.ships)} 条舰船，版本 {self.version}")
             #self.version = version   # 可以在类中保存版本号
 
+            self._auto_assign_game_order()
+            
             # 如果检测到旧格式，立即保存为新格式（可选）
             #if isinstance(data, list):
             #    self.save()   # 这会以新格式保存
+            
 
         except json.JSONDecodeError as e:
             raise Exception(f"JSON 文件损坏: {e}\n请使用在线校验工具修复或恢复备份。")
+        
+    def load_config(self):
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        return json.loads(content)
+            except (json.JSONDecodeError, IOError):
+                pass
+        default_config = {"edit_password": "", "log_edits": True}
+        self.save_config(default_config)
+        return default_config
+        #else:
+        #    return {"edit_password": "", "log_edits": True}
+
+    def save_config(self, config=None):
+        if config is not None:
+            self.config = config
+        with open(self.config_file, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=2)
+    
+    def set_edit_password(self, password: str):
+        """设置编辑密码（哈希后存储）"""
+        self.config["edit_password"] = hash_password(password)
+        self.save_config()
+    
+    def verify_edit_password(self, password: str) -> bool:
+        """验证输入的密码是否正确"""
+        stored_hash = self.config.get("edit_password", "")
+        if not stored_hash:
+            # 没有设置密码，视为验证通过（即不需要密码）
+            return True
+        return hash_password(password) == stored_hash
+
+    #def get_edit_password(self):
+    #    return self.config.get("edit_password", "")
+
+    def need_password_for_edit(self) -> bool:
+        """是否需要密码才能编辑"""
+        return bool(self.config.get("edit_password", ""))
+    
+    def log_edit(self, ship_id, changes, password_used):
+        """记录修改日志"""
+        if not self.config.get("log_edits", True):
+            return
+        log_file = "edit_log.json"
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "ship_id": ship_id,
+            "password_used": password_used,
+            "changes": changes
+        }
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
 
     def _migrate_old_tech_fields(self, item: dict):
         """
@@ -245,6 +319,8 @@ class ShipManager:
     def sort(self, ships: list[Ship], key: str, reverse: bool = False) -> list[Ship]:
         if key == "id":
             return sorted(ships, key=lambda s: s.id, reverse=reverse)
+        elif key == "game_order":
+            return sorted(ships, key=lambda s: s.game_order, reverse=reverse)
         elif key == "name":
             return sorted(ships, key=lambda s: s.name, reverse=reverse)
         elif key == "rarity":
@@ -253,6 +329,14 @@ class ShipManager:
         elif key == "oath":
             # 按誓约状态排序，True 排在前还是后取决于 reverse
             return sorted(ships, key=lambda s: s.oath, reverse=reverse)
+        elif key == "release_date":
+        # 将空字符串视为极大值，以便排在最后
+            def date_key(s):
+                date = s.release_date
+                if not date:
+                    return "9999-99-99"  # 极大字符串
+                return date
+            return sorted(ships, key=date_key, reverse=reverse)
         return ships
     
     def calculate_fleet_tech(self):
@@ -308,8 +392,11 @@ class ShipManager:
         for ship in self.ships:
             if ship.owned:
                 faction = ship.faction
-                total = ship.tech_points_obtain + ship.tech_points_max + ship.tech_points_120
-                camp_tech[faction] = camp_tech.get(faction, 0) + total
+                if faction not in camp_tech:
+                    camp_tech[faction] = {'obtain': 0, 'max': 0, 'level120': 0}
+                    camp_tech[faction]['obtain'] += ship.tech_points_obtain
+                    camp_tech[faction]['max'] += ship.tech_points_max
+                    camp_tech[faction]['level120'] += ship.tech_points_120
         return camp_tech
     
     def calculate_global_bonuses(self):
@@ -384,8 +471,35 @@ class ShipManager:
         }
     
     def add_ship(self, ship: Ship):
-        """添加新船，若 ship.id 为 0 则自动分配，否则检查冲突并可能自动调整"""
-        existing_ids = {s.id for s in self.ships}
+        # 处理 game_order
+        if ship.game_order != 0:
+            existing = next((s for s in self.ships if s.game_order == ship.game_order), None)
+            if existing:
+                from PySide6.QtWidgets import QMessageBox
+                reply = QMessageBox.question(
+                    None, "图鉴顺序冲突",
+                    f"图鉴顺序 {ship.game_order} 已被 {existing.name} 占用。\n"
+                    f"是否自动将 {ship.game_order} 及之后的船顺序向后延后一位？",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    # 延后冲突及之后的船
+                    for s in self.ships:
+                        if s.game_order >= ship.game_order:
+                            s.game_order += 1
+                    # 新船使用原顺序
+                    ship.game_order = ship.game_order
+                    # 重新排序
+                    self.ships.sort(key=lambda s: s.game_order)
+                else:
+                    print("用户取消添加")
+                    return None
+        else:
+            # 自动分配：取最大 game_order + 1
+            max_order = max((s.game_order for s in self.ships), default=0)
+            ship.game_order = max_order + 1
+            """添加新船，若 ship.id 为 0 则自动分配，否则检查冲突并可能自动调整"""
+            existing_ids = {s.id for s in self.ships}
         
         if ship.id == 0:
             # 自动分配：取最大 ID + 1
@@ -410,6 +524,7 @@ class ShipManager:
             # 如果未冲突，直接使用 ship.id
 
         self.ships.append(ship)
+        self.ships.sort(key=lambda s: s.game_order)
         self.save()
         print(f"已添加舰船 ID={ship.id}, 当前总数为 {len(self.ships)}")
         return ship.id
@@ -453,7 +568,7 @@ class ShipManager:
         import shutil
         try:
             print(f"正在从 {url} 获取最新数据...")
-            resp = requests.get(url, timeout=10)
+            resp = requests.get(url, timeout=10, verify=certifi.where())
             resp.raise_for_status()
             remote_data = resp.json()
 
@@ -553,3 +668,31 @@ class ShipManager:
                 # 如果还保留了其他状态（如改造、誓约等），也可一并合并
                 new_ship.remodeled = old_ship.remodeled
                 # 注意：科技点数值以新数据为准（因为可能修正了数值）
+
+    def _auto_assign_game_order(self):
+        """如果所有船的 game_order 都是 0，则根据当前列表顺序自动分配"""
+        if not self.ships:
+            return
+        if any(ship.game_order != 0 for ship in self.ships):
+            print("已有非零 game_order，跳过自动分配")
+            return
+        print("开始自动分配 game_order")
+        for idx, ship in enumerate(self.ships, start=1):
+            ship.game_order = idx
+        self.save()
+        print(f"已自动分配 game_order，范围 1-{len(self.ships)}")
+
+    def get_latest_version(self):
+        """从GitHub获取最新版本号"""
+        try:
+            url = "https://api.github.com/repos/xiwangzaiqianfang/AzurLane-Dex/releases/latest"
+            resp = requests.get(url, timeout=10, verify=certifi.where())
+            if resp.status_code == 200:
+                data = resp.json()
+                tag = data.get("tag_name", "")
+                if tag.startswith("v"):
+                    tag = tag[1:]
+                return tag
+        except Exception as e:
+            print(f"获取版本失败: {e}")
+        return None

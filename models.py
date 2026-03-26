@@ -9,6 +9,7 @@ class Ship:
     faction: str
     ship_class: str
     rarity: str
+    game_order: int = 0
 
     # 状态信息
     owned: bool = False
