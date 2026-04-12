@@ -1,14 +1,17 @@
-import sys
 import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                                QSplitter, QMessageBox, QFileDialog, QApplication, QDialog, QLabel, QSizePolicy,
-                                QProgressBar,QStackedWidget, QPushButton, QListWidget, QListWidgetItem)
-from PySide6.QtCore import Qt, QSettings, Signal, QUrl, QTimer, QThread, QSize
+                                QMessageBox, QApplication, QLabel, QSizePolicy,
+                                QProgressBar,QStackedWidget, QPushButton, QListWidget,
+                                QListWidgetItem, QFrame, QGraphicsOpacityEffect)
+from PySide6.QtCore import (Qt, QSettings, Signal, QUrl, QTimer, QThread, QParallelAnimationGroup,
+                            QSize, QPropertyAnimation, QEasingCurve, QPoint)
 from PySide6.QtGui import QPixmap, QDesktopServices, QIcon
-
+from gui.navigationlistweidget import NavigationListWidget
 from manager import ShipManager
 from gui.main_page import MainPage
-from gui.fleet_tech_page import FleetTechPage
+#from gui.fleet_tech_page import FleetTechPage
+from gui.camp_tech_page import CampTechPage
+from gui.attr_bonus_page import AttrBonusPage
 from gui.stats_page import StatPage
 from gui.settings_page import SettingsPage
 
@@ -20,6 +23,7 @@ class LoaderThread(QThread):
         self.finished.emit(manager)
 
 class MainWindow(QMainWindow):
+    windowResized = Signal()
     def __init__(self, manager=None):
         print("MainWindow __init__ start")
         super().__init__()
@@ -95,101 +99,158 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(0)
 
         #侧边栏
-        self.nav_list = QListWidget()
-        self.nav_list.setFixedHeight(100)
-        self.nav_list.setMinimumHeight(400)
-        self.nav_list.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        #self.nav_list.addItems(["舰船", "舰队科技", "统计", "设置"])
-        menu_items = [
-            ("舰船", "icons/ship.png"),
-            ("舰队科技", "icons/fleet_tech.png"),
-            ("统计", "icons/stats.png"),
-            ("设置", "icons/settings.png"),
-        ]
-        self.nav_items = []
-        for text, icon_path in menu_items:
-            item = QListWidgetItem(QIcon(icon_path), text)
-            self.nav_list.addItem(item)
-            self.nav_items.append(item)
-
-        # 折叠按钮
-        self.collapse_btn = QPushButton("◀")
-        self.collapse_btn.setFixedSize(24, 24)
-        self.collapse_btn.clicked.connect(self.toggle_nav)
-        # 将侧边栏和按钮放入垂直布局
         nav_container = QWidget()
         nav_layout = QVBoxLayout(nav_container)
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(0)
-        nav_layout.addWidget(self.nav_list)
-        nav_layout.addWidget(self.collapse_btn)
 
-        self.nav_list.currentRowChanged.connect(self.switch_page)
-        main_layout.addWidget(self.nav_list, 0, Qt.AlignTop)
-        self.nav_list = QListWidget()
-        self.nav_list.setFixedWidth(180)  # 展开宽度
+        self.collapsed = False
+        self.auto_collapse_threshold = 1007
+        self.collapse_btn = QPushButton("◀ 导航")
+        self.collapse_btn.setObjectName("navItem")
+        self.collapse_btn.setFixedSize(200, 50)
+        self.collapse_btn.clicked.connect(self.toggle_nav)
+        nav_layout.addWidget(self.collapse_btn, 0, Qt.AlignTop)
+
+        self.nav_list = NavigationListWidget()
+        self.nav_list.rowReleased.connect(self.switch_page)
+        self.nav_list.setFixedWidth(200)
+        self.nav_list.setMinimumWidth(64)
+        self.nav_list.setMaximumWidth(200)
+        self.nav_list.setMinimumHeight(400)
         self.nav_list.setIconSize(QSize(24, 24))
+        self.nav_list.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        menu_items = [
+            ("舰船图鉴", "icons/ship.png"), ("阵营科技", "icons/camp_tech.png"),
+            ("属性加成", "icons/attr_bonus.png"), ("统计", "icons/stats.png"), ("设置", "icons/settings.png"),
+        ]
+        self.nav_items = []
+        for text, icon_path in menu_items:
+            item = QListWidgetItem(QIcon(icon_path), text)
+            item.setData(Qt.UserRole, text)
+            self.nav_list.addItem(item)
+            self.nav_items.append(item)
+        nav_layout.addWidget(self.nav_list, 1)
+        main_layout.addWidget(nav_container, 0, Qt.AlignTop)
 
+        #动画指示器
+        self.nav_list.currentRowChanged.connect(self.on_nav_row_changed)
+        self.indicator = QFrame(self.nav_list)
+        self.indicator.setFixedWidth(4)  # 指示条宽度
+        self.indicator.setStyleSheet("border-radius: 2px;")
+        self.indicator.hide()  # 初始隐藏，第一次选中时显示
 
         #堆叠区域
         self.stacked = QStackedWidget()
+        self.stacked.setContentsMargins(0, 0, 0, 0)
         self.stacked.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.stacked, 1)
 
         # 创建页面
         self.main_page = MainPage(self.manager, self)
-        self.fleet_tech_page = FleetTechPage(self.manager,self)
+        self.camp_tech_page = CampTechPage(self.manager,self)
+        self.attr_bonus_page = AttrBonusPage(self.manager, self)    
         self.stats_page = StatPage(self.manager, self)
         self.settings_page = SettingsPage(self.manager, self)
 
         self.stacked.addWidget(self.main_page)
-        self.stacked.addWidget(self.fleet_tech_page)
+        self.stacked.addWidget(self.camp_tech_page)
+        self.stacked.addWidget(self.attr_bonus_page)
         self.stacked.addWidget(self.stats_page)
         self.stacked.addWidget(self.settings_page)
 
         self.nav_list.setCurrentRow(0)
+        self.stacked.setCurrentWidget(self.main_page)
 
-        theme_mode = self.manager.config.get("theme_mode", "system")
-        self.system_follow = (theme_mode == "system")
-        if self.system_follow:
-            app = QApplication.instance()
-            if hasattr(app.styleHints(), 'colorScheme'):
-                current_scheme = app.styleHints().colorScheme()
-                if current_scheme == Qt.ColorScheme.Dark:
-                    self.manager.current_theme = "dark"
-                else:
-                    self.manager.current_theme = "light"
+        #theme_mode = self.manager.config.get("theme_mode", "system")
+        #self.system_follow = (theme_mode == "system")
+        #if self.system_follow:
+        app = QApplication.instance()
+        if hasattr(app.styleHints(), 'colorScheme'):
+            current_scheme = app.styleHints().colorScheme()
+            if current_scheme == Qt.ColorScheme.Dark:
+                self.manager.current_theme = "dark"
             else:
-                # 对于 Qt < 6.5，需要其他方法获取，例如读取注册表
-                import winreg
-                try:
-                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                                        r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-                    value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-                    winreg.CloseKey(key)
-                    self.manager.current_theme = "dark" if value == 0 else "light"
-                except:
-                    self.manager.current_theme = "light"  # 默认
-            self.load_theme()
+                self.manager.current_theme = "light"
         else:
-            self.manager.current_theme = theme_mode
-            self.load_theme()
+            # 对于 Qt < 6.5，需要其他方法获取，例如读取注册表
+            import winreg
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                    r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+                value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+                winreg.CloseKey(key)
+                self.manager.current_theme = "dark" if value == 0 else "light"
+            except:
+                self.manager.current_theme = "light"  # 默认
+        self.load_theme()
+        #else:
+        #    self.manager.current_theme = theme_mode
+        #    self.load_theme()
         self.setup_theme_monitor()
 
     def switch_page(self, row):
-        self.stacked.setCurrentIndex(row)
+        self.switch_page_with_fade(row)
 
-    def show_fleet_tech(self):
-        """切换到舰队科技页面"""
+    def switch_page_with_fade(self, new_index):
+        print("switch_page_with_fade called, new_index:", new_index)
+        current_widget = self.stacked.currentWidget()
+        new_widget = self.stacked.widget(new_index)
+        if current_widget == new_widget:
+            return
+        
+        # 如果没有当前页面（启动时第一次切换）
+        if current_widget is None:
+            self.stacked.setCurrentIndex(new_index)
+            return
+
+        # 淡出当前页面
+        self.fade_out = QGraphicsOpacityEffect(current_widget)
+        effect_out = QGraphicsOpacityEffect(current_widget)
+        current_widget.setGraphicsEffect(effect_out)
+        self.fade_out = QPropertyAnimation(effect_out, b"opacity")
+        self.fade_out.setDuration(100)
+        self.fade_out.setStartValue(1.0)
+        self.fade_out.setEndValue(0.0)
+        self.fade_out.finished.connect(lambda: self._perform_switch(current_widget, new_widget, new_index))
+        self.fade_out.start()
+
+
+    def _perform_switch(self, old_widget, new_widget, new_index):
+        print("_perform_switch called")
+        # 先切换页面，但新页面初始透明
+        effect_in = QGraphicsOpacityEffect(new_widget)
+        new_widget.setGraphicsEffect(effect_in)
+        effect_in.setOpacity(0.0)
+        self.stacked.setCurrentIndex(new_index)
+        # 淡入新页面
+        self.fade_in_effect = QGraphicsOpacityEffect(new_widget)
+        new_widget.setGraphicsEffect(self.fade_in_effect)
+        self.fade_in_effect.setOpacity(0.0)
+        self.fade_in = QPropertyAnimation(self.fade_in_effect, b"opacity")
+        self.fade_in.setDuration(100)
+        self.fade_in.setStartValue(0.0)
+        self.fade_in.setEndValue(1.0)
+        self.fade_in.finished.connect(lambda: new_widget.setGraphicsEffect(None))
+        self.fade_in.start()
+        # 清理旧页面的效果
+        old_widget.setGraphicsEffect(None)
+    
+    def show_camp_tech(self):
+        """切换到阵营科技页面"""
         self.nav_list.setCurrentRow(1)
+
+    def show_attr_bonus(self):
+        """切换到属性加成页面"""
+        self.nav_list.setCurrentRow(2)
 
     def show_stats(self):
         """切换到统计页面"""
-        self.nav_list.setCurrentRow(2)
+        self.nav_list.setCurrentRow(3)
 
     def show_settings(self):
         """切换到设置页面"""
-        self.nav_list.setCurrentRow(3)
+        self.nav_list.setCurrentRow(4)
         
     def load_theme(self):
         """加载保存的主题，并将样式表应用到整个应用"""
@@ -213,19 +274,20 @@ class MainWindow(QMainWindow):
             for widget in app.topLevelWidgets():
                 widget.style().unpolish(widget)
                 widget.style().polish(widget)
+                self.update_indicator_color()
                 widget.update()
                 app.processEvents()
         else:
             print(f"样式文件不存在: {style_path}")
 
-    def toggle_theme(self):
-        """切换深色/浅色主题"""
-        current = self.settings.value("theme", "light")
-        new_theme = "dark" if current == "light" else "light"
-        self.settings.setValue("theme", new_theme)
-        self.load_theme()
+    #def toggle_theme(self):
+    #    """切换深色/浅色主题"""
+    #    current = self.settings.value("theme", "light")
+    #    new_theme = "dark" if current == "light" else "light"
+    #    self.settings.setValue("theme", new_theme)
+    #    self.load_theme()
         # 强制刷新界面
-        self.repaint()
+    #    self.repaint()
 
     def closeEvent(self, event):
         """窗口关闭时保存大小和位置"""
@@ -242,6 +304,18 @@ class MainWindow(QMainWindow):
                 self.restoreGeometry(geometry)
             #print("MainWindow showEvent")
         super().showEvent(event)
+        QTimer.singleShot(100, self.init_indicator)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.windowResized.emit() # 发出窗口大小改变信号
+    
+    def init_indicator(self):
+        if not hasattr(self, 'nav_list'):
+            return
+        row = self.nav_list.currentRow()
+        if row >= 0:
+            self.on_nav_row_changed(row)
 
     def setup_theme_monitor(self):
         if hasattr(QApplication.instance().styleHints(), 'colorSchemeChanged'):
@@ -265,42 +339,44 @@ class MainWindow(QMainWindow):
             system_dark = (value == 0)
         except:
             system_dark = False
-        if self.system_follow:
-            new_theme = "dark" if system_dark else "light"
-            if new_theme != self.manager.version_theme:
-                self.manager.version_theme = new_theme
-                self.load_theme()
+        #if self.system_follow:
+        new_theme = "dark" if system_dark else "light"
+        if new_theme != self.manager.version_theme:
+            self.manager.version_theme = new_theme
+            self.load_theme()
 
     def on_system_theme_changed(self, color_scheme):
-        if self.system_follow:
-            new_theme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
-            if new_theme != self.manager.current_theme:
-                #print(f"[主题] 系统主题变化，新主题: {new_theme}")
-                self.manager.current_theme = new_theme
-                self.load_theme()
-
-    def set_system_theme_follow(self, follow):
-        print(f"[主题] 跟随系统主题: {follow}")
-        self.system_follow = follow
-        if follow:
-            # 立即根据当前系统主题切换
-            app = QApplication.instance()
-            if hasattr(app.styleHints(), 'colorScheme'):
-                current_scheme = app.styleHints().colorScheme()
-                new_theme = "dark" if current_scheme == Qt.ColorScheme.Dark else "light"
-                self.manager.current_theme = new_theme
-                self.load_theme()
-            else:
-                # 低版本 Qt 可读取注册表等
-                # 这里简单默认浅色
-                self.manager.current_theme = "light"
-                self.load_theme()
-
-    def set_manual_theme(self, theme):
-        print(f"[主题] 手动设置主题为: {theme}")
-        self.system_follow = False
-        self.manager.current_theme = theme
+        #if self.system_follow:
         self.load_theme()
+        self.update_indicator_color()
+        new_theme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
+        if new_theme != self.manager.current_theme:
+            #print(f"[主题] 系统主题变化，新主题: {new_theme}")
+            self.manager.current_theme = new_theme
+            self.load_theme()
+
+    #def set_system_theme_follow(self, follow):
+    #    print(f"[主题] 跟随系统主题: {follow}")
+    #    self.system_follow = follow
+    #    if follow:
+    #        # 立即根据当前系统主题切换
+    #        app = QApplication.instance()
+    #        if hasattr(app.styleHints(), 'colorScheme'):
+    #            current_scheme = app.styleHints().colorScheme()
+    #            new_theme = "dark" if current_scheme == Qt.ColorScheme.Dark else "light"
+    #            self.manager.current_theme = new_theme
+    #            self.load_theme()
+    #        else:
+    #            # 低版本 Qt 可读取注册表等
+    #            # 这里简单默认浅色
+    #            self.manager.current_theme = "light"
+    #            self.load_theme()
+
+    #def set_manual_theme(self, theme):
+    #    print(f"[主题] 手动设置主题为: {theme}")
+    #    self.system_follow = False
+    #    self.manager.current_theme = theme
+    #    self.load_theme()
 
     def open_settings(self):
         from gui.settings_page import SettingsDialog
@@ -326,23 +402,63 @@ class MainWindow(QMainWindow):
         print("MainWindow hideEvent")
         super().hideEvent(event)
 
+    def on_nav_row_changed(self, row):
+        if row < 0:
+            self.indicator.hide()
+            return
+        item = self.nav_list.item(row)
+        # 计算目标位置：列表项的位置 + 指示器偏移
+        rect = self.nav_list.visualItemRect(item)
+        target_y = rect.y() + (rect.height() - self.indicator.height()) // 2
+        # 使用动画移动指示
+        self.anim = QPropertyAnimation(self.indicator, b"pos")
+        self.anim.setDuration(150)
+        self.anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.anim.setStartValue(self.indicator.pos())
+        self.anim.setEndValue(QPoint(0, target_y))
+        self.anim.start()
+        self.indicator.show()
+
+    def update_indicator_color(self):
+        """根据当前主题设置指示条颜色"""
+        theme = self.manager.current_theme
+        if theme == "light":
+            color = "#0078d4"   # WinUI 蓝色
+        else:
+            color = "#4cc2ff"   # 深色主题下的亮蓝色
+        self.indicator.setStyleSheet(f"background-color: {color}; border-radius: 2px;")
+
     def toggle_nav(self):
-        self.collapsed = not getattr(self, 'collapsed', False)
+        self.collapsed = not self.collapsed
+        # self.collapsed = not getattr(self, 'collapsed', False)
+        target_width = 64 if self.collapsed else 200
+        # 动画 minimumWidth
+        self.anim_min = QPropertyAnimation(self.nav_list, b"minimumWidth")
+        self.anim_min.setDuration(100)
+        self.anim_min.setStartValue(self.nav_list.minimumWidth())
+        self.anim_min.setEndValue(target_width)
+        self.anim_min.start()
+        # 动画 maximumWidth
+        self.anim_max = QPropertyAnimation(self.nav_list, b"maximumWidth")
+        self.anim_max.setDuration(100)
+        self.anim_max.setStartValue(self.nav_list.maximumWidth())
+        self.anim_max.setEndValue(target_width)
+        self.anim_max.start()
         if self.collapsed:
-            # 折叠：隐藏文字，缩小宽度
-            self.nav_list.setFixedWidth(60)
-            for item in self.nav_items:
-                item.setText("")
-                item.setTextAlignment(Qt.AlignCenter)
+            self.collapse_btn.setFixedWidth(64)
             self.collapse_btn.setText("▶")
         else:
-            # 展开：恢复文字和宽度
-            self.nav_list.setFixedWidth(180)
-            texts = ["舰船", "舰队科技", "统计", "设置"]
-            for item, text in zip(self.nav_items, texts):
-                item.setText(text)
+            self.collapse_btn.setFixedWidth(200)
+            self.collapse_btn.setText("◀ 导航")
+        for item in self.nav_items:
+            if self.collapsed:
+                item.setText("")
+                item.setTextAlignment(Qt.AlignCenter)
+            else:
+                item.setText(item.data(Qt.UserRole))
                 item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            self.collapse_btn.setText("◀")
+            self.collapse_btn.setText("▶" if self.collapsed else "◀ 导航")
+        QTimer.singleShot(50, lambda: self.on_nav_row_changed(self.nav_list.currentRow()))
 
     def update_online(self):
         reply = QMessageBox.question(
@@ -387,8 +503,10 @@ class MainWindow(QMainWindow):
 
     def on_global_data_changed(self):
         """数据全局变化时刷新相关页面"""
-        if hasattr(self, 'fleet_tech_page'):
-            self.fleet_tech_page.load_data()
+        if hasattr(self, 'camp_tech_page'):
+            self.camp_tech_page.load_data()
+        if hasattr(self, 'attr_bonus_page'):
+            self.attr_bonus_page.load_data()
         if hasattr(self, 'stats_page'):
             self.stats_page.load_stats()
         # 主页面本身会通过详情页信号更新，无需重复刷新

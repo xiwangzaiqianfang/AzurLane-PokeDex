@@ -7,7 +7,7 @@ import os
 from gui.edit_ship_dialog import EditShipDialog
 
 class DetailWidget(QWidget):
-    data_changed = Signal(object)
+    data_changed = Signal(int, object)
 
     def __init__(self):
         super().__init__()
@@ -22,6 +22,8 @@ class DetailWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(scroll)
 
@@ -61,11 +63,13 @@ class DetailWidget(QWidget):
         form = QFormLayout()
         #form = QFormLayout(basic_group)
         form.setContentsMargins(0, 0, 0, 0)
+        self.game_order_label = QLabel()
         self.id_label = QLabel()
         self.name_label = QLabel()
         self.faction_label = QLabel()
         self.class_label = QLabel()
         self.rarity_label = QLabel()
+        form.addRow("图鉴顺序:", self.game_order_label)
         form.addRow("编号:", self.id_label)
         form.addRow("名称:", self.name_label)
         form.addRow("阵营:", self.faction_label)
@@ -123,6 +127,10 @@ class DetailWidget(QWidget):
         self.remodeled_cb = QCheckBox("已改造")
         self.remodeled_cb.clicked.connect(self.on_remodeled_clicked)
         hbox.addWidget(self.remodeled_cb)
+
+        self.special_gear_obtained_cb = QCheckBox("已获得特殊兵装")
+        self.special_gear_obtained_cb.clicked.connect(self.on_special_gear_obtained_clicked)
+        hbox.addWidget(self.special_gear_obtained_cb)
 
         hbox.addStretch()
         state_layout.addLayout(hbox)
@@ -246,6 +254,27 @@ class DetailWidget(QWidget):
 
         layout.addWidget(event_card)
 
+        # ---- 特殊兵装卡片 ----
+        self.gear_card = QFrame()
+        self.gear_card.setObjectName("card")
+        gear_layout = QVBoxLayout(self.gear_card)
+        gear_layout.setContentsMargins(10, 10, 10, 10)
+
+        gear_title = QLabel("特殊兵装")
+        gear_title.setObjectName("cardTitle")
+        gear_layout.addWidget(gear_title)
+
+        gear_form = QFormLayout()
+        self.gear_name_label = QLabel()
+        self.gear_date_label = QLabel()
+        self.gear_acquire_label = QLabel()
+        gear_form.addRow("名称:", self.gear_name_label)
+        gear_form.addRow("实装日期:", self.gear_date_label)
+        gear_form.addRow("获取途径:", self.gear_acquire_label)
+        gear_layout.addLayout(gear_form)
+
+        layout.addWidget(self.gear_card)
+
         # 编辑按钮
         self.edit_btn = QPushButton("编辑详细信息")
         self.edit_btn.clicked.connect(self.open_edit_dialog)
@@ -262,6 +291,7 @@ class DetailWidget(QWidget):
     def clear(self):
         print("clear 被调用")
         self.current_ship = None
+        self.game_order_label.clear()
         self.id_label.clear()
         self.name_label.clear()
         self.faction_label.clear()
@@ -273,6 +303,7 @@ class DetailWidget(QWidget):
         self.oath_cb.setChecked(False)
         self.level120_cb.setChecked(False)
         self.breakthrough_spin.setValue(0)
+        self.special_gear_obtained_cb.setChecked(False)
         #for label in self.tech_labels.values():
         #    label.setText("0")
         self.acquire_main_label.clear()
@@ -284,6 +315,8 @@ class DetailWidget(QWidget):
         self.debut_label.clear()
         self.release_date_label.clear()
         self.notes_label.clear()
+        if hasattr(self, 'gear_card'):
+            self.gear_card.hide()
         self.image_label.clear()
 
     def update_display(self):
@@ -294,6 +327,7 @@ class DetailWidget(QWidget):
         #print(f"update_display: ship {s.id}, owned={s.owned}, oath={s.oath}, level120={s.level_120}, bt={s.breakthrough}")
 
         # 设置值
+        self.game_order_label.setText(str(s.game_order))
         self.id_label.setText(str(s.id))
         self.name_label.setText(s.name)
         self.faction_label.setText(s.faction)
@@ -306,13 +340,16 @@ class DetailWidget(QWidget):
         self.oath_cb.setChecked(s.oath)
         self.level120_cb.setChecked(s.level_120)
         self.breakthrough_spin.setValue(s.breakthrough)
+        self.special_gear_obtained_cb.setChecked(s.special_gear_obtained)
 
         # ---- 控件启用逻辑 ----
         owned = s.owned
         can_remodel = s.can_remodel
+        can_special_gear = s.can_special_gear
 
         # 已改造：仅当已获得且可改造时启用
         self.remodeled_cb.setEnabled(owned and can_remodel)
+        self.special_gear_obtained_cb.setEnabled(owned and can_special_gear)
 
         if s.remodel_date:
             self.remodel_date_label.setText(f"{s.remodel_date}")
@@ -369,6 +406,16 @@ class DetailWidget(QWidget):
         self.release_date_label.setText(s.release_date)
         self.notes_label.setText(s.notes)
 
+        s = self.current_ship
+        has_gear = bool(s.special_gear_name or s.special_gear_date or s.special_gear_acquire)
+        if has_gear:
+            self.gear_name_label.setText(s.special_gear_name or "无")
+            self.gear_date_label.setText(s.special_gear_date or "无")
+            self.gear_acquire_label.setText(s.special_gear_acquire or "无")
+            self.gear_card.show()
+        else:
+            self.gear_card.hide()
+
         # 立绘
         if s.image_path and os.path.exists(s.image_path):
             pixmap = QPixmap(s.image_path)
@@ -398,29 +445,35 @@ class DetailWidget(QWidget):
             self.current_ship.oath = False
             self.current_ship.level_120 = False
             self.current_ship.remodeled = False
-        self.data_changed.emit(self.current_ship)
+            self.current_ship.special_gear_obtained = False
+        self.data_changed.emit(self.current_ship.id, self.current_ship)
         self.update_display()
 
     def on_breakthrough_changed(self, value):
         if self.current_ship:
             self.current_ship.breakthrough = value
             #print(f"on_breakthrough_changed: ship {self.current_ship.id}, breakthrough={value}")
-            self.data_changed.emit(self.current_ship)
+            self.data_changed.emit(self.current_ship.id, self.current_ship)
 
     def on_remodeled_clicked(self, checked):
         if self.current_ship:
             self.current_ship.remodeled = checked
-            self.data_changed.emit(self.current_ship)
+            self.data_changed.emit(self.current_ship.id, self.current_ship)
 
     def on_oath_clicked(self, checked):
         if self.current_ship:
             self.current_ship.oath = checked
-            self.data_changed.emit(self.current_ship)
+            self.data_changed.emit(self.current_ship.id,self.current_ship)
 
     def on_level120_clicked(self, checked):
         if self.current_ship:
             self.current_ship.level_120 = checked
-            self.data_changed.emit(self.current_ship)
+            self.data_changed.emit(self.current_ship.id, self.current_ship)
+
+    def on_special_gear_obtained_clicked(self, checked):
+        if self.current_ship:
+            self.current_ship.special_gear_obtained = checked
+            self.data_changed.emit(self.current_ship.id, self.current_ship)
 
     def open_edit_dialog(self):
         # 尝试从主窗口获取当前选中的船
@@ -434,18 +487,20 @@ class DetailWidget(QWidget):
         #print("=== 进入 open_edit_dialog ===")
         #print(f"self.current_ship = {self.current_ship}")
         #print(f"self.main_window = {self.main_window}")
-        
         ship = self.current_ship
         if ship is None and self.main_window:
             ship = self.main_window.get_current_ship()
         if ship is None:
             QMessageBox.warning(self, "错误", "无法获取当前选中的舰船。")
             return
-    
+        
+        old_id = ship.id
+        print("当前编辑的船 ID:", self.current_ship.id)
+
         # 密码验证等...
-        if self.manager:# and self.manager.need_password_for_edit():
+        if self.manager and self.manager.need_password_for_edit():
             pwd, ok = QInputDialog.getText(self, "验证", "请输入编辑密码:", QLineEdit.Password)
-            if not ok or pwd != self.manager.get_edit_password():
+            if not ok or not self.manager.verify_edit_password(pwd):
                 QMessageBox.warning(self, "错误", "密码错误，无法编辑。")
                 return
             password_used = True
@@ -460,5 +515,5 @@ class DetailWidget(QWidget):
             new_ship = dlg.get_ship()
             # 更新详情页的 current_ship
             self.current_ship = new_ship
-            self.data_changed.emit(new_ship)
+            self.data_changed.emit(old_id, new_ship)
             QMessageBox.information(self, "成功", "舰船数据已更新。")

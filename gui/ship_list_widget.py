@@ -8,8 +8,8 @@ class ShipListWidget(QTableWidget):
 
     def __init__(self):
         super().__init__()
-        self.setColumnCount(6)
-        self.setHorizontalHeaderLabels(["","编号", "名称", "拥有", "突破", "誓约"])
+        self.setColumnCount(7)
+        self.setHorizontalHeaderLabels(["","编号", "名称", "拥有", "突破", "誓约", "120级"])
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
         self.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
@@ -17,6 +17,7 @@ class ShipListWidget(QTableWidget):
         self.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
         self.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
         self.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+        self.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
         self.horizontalHeader().setStretchLastSection(False)
         self.horizontalHeader().setSectionsClickable(False)
         self.setColumnWidth(0, 30)
@@ -25,6 +26,7 @@ class ShipListWidget(QTableWidget):
         self.setColumnWidth(3, 50)
         self.setColumnWidth(4, 50)
         self.setColumnWidth(5, 50)
+        self.setColumnWidth(6, 50)
         self.setWordWrap(False)
         self.horizontalHeader().setSortIndicatorShown(True)
         self.horizontalHeader().sortIndicatorChanged.connect(self.on_sort_indicator_changed)
@@ -80,6 +82,11 @@ class ShipListWidget(QTableWidget):
             oath_item.setData(Qt.UserRole, ship.oath)  # 存储布尔值用于排序
             self.setItem(row, 5, oath_item)
 
+            level120_item = QTableWidgetItem("✓" if ship.level_120 else "✗")
+            level120_item.setTextAlignment(Qt.AlignCenter)
+            level120_item.setData(Qt.UserRole, ship.level_120)
+            self.setItem(row, 6, level120_item)
+
         # 默认选中第一行
         if ships:
             self.selectRow(0)
@@ -89,7 +96,6 @@ class ShipListWidget(QTableWidget):
     def update_ship(self, ship):
         # 临时断开 selection 信号，避免循环
         #self.itemSelectionChanged.disconnect(self.on_selection_changed)
-
         for row, s in enumerate(self.current_ships):
             if s.id == ship.id:
                 # 更新 current_ships 中的对象引用
@@ -105,6 +111,8 @@ class ShipListWidget(QTableWidget):
                 self.item(row, 4).setData(Qt.UserRole, ship.breakthrough)
                 self.item(row, 5).setText("❤" if ship.oath else "✗")
                 self.item(row, 5).setData(Qt.UserRole, ship.oath)
+                self.item(row, 6).setText("✓" if ship.level_120 else "✗")
+                self.item(row, 6).setData(Qt.UserRole, ship.level_120)
                 # 如果当前选中的就是这一行，可以更新详情（但为避免循环，通常不需要）
                 break
 
@@ -124,7 +132,7 @@ class ShipListWidget(QTableWidget):
 
     def on_sort_indicator_changed(self, logicalIndex, order):
         # 根据列索引确定排序字段
-        key_map = {0: "id", 1: "name", 3: "rarity", 4: "oath"}  # 突破列也可以排序，但这里简化
+        key_map = {0: "id", 1: "name", 3: "rarity", 4: "oath", 5: "level120"}  # 突破列也可以排序，但这里简化
         if logicalIndex in key_map:
             reverse = (order == Qt.DescendingOrder)
             self.sort_requested.emit(key_map[logicalIndex], reverse)

@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QFont
+from utils import resource_path
 
 class SplashScreen(QWidget):
     def __init__(self):
@@ -13,7 +14,7 @@ class SplashScreen(QWidget):
 
         # 应用图标
         icon_label = QLabel()
-        pixmap = QPixmap("app_icon.ico")  # 替换为您的图标路径
+        pixmap = QPixmap(resource_path("app_icon.ico"))
         if not pixmap.isNull():
             pixmap = pixmap.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             icon_label.setPixmap(pixmap)

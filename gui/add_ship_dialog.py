@@ -86,14 +86,15 @@ class AddShipDialog(QDialog):
         self.class_combo.addItems(["请选择","驱逐", "轻巡", "重巡", "超巡", "战巡", "战列", "航母", "轻航", "航战", "重炮", "维修", "潜艇", "潜母", "运输", "风帆"])
         self.rarity_combo = QComboBox()
         self.rarity_combo.addItems(["请选择","普通", "稀有", "精锐", "超稀有", "海上传奇", "最高方案", "决战方案"])
+        
         self.can_remodel_cb = QCheckBox("可改造")
-        # 改造日期控件（默认禁用）
         self.remodel_date_edit = QDateEdit()
         self.remodel_date_edit.setCalendarPopup(True)
         self.remodel_date_edit.setDate(QDate.currentDate())
         self.remodel_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.remodel_date_edit.setEnabled(False)
         self.can_remodel_cb.toggled.connect(self.remodel_date_edit.setEnabled)
+
         self.acquire_main_edit = QLineEdit()
         self.acquire_detail_edit = QLineEdit()
         self.build_time_edit = QLineEdit()
@@ -102,13 +103,25 @@ class AddShipDialog(QDialog):
         self.is_permanent_cb = QCheckBox("常驻")
         self.is_permanent_cb.setChecked(True)
         self.debut_event_edit = QLineEdit()
-        #self.release_date_edit = QLineEdit()
         self.release_date_edit = QDateEdit()
         self.release_date_edit.setCalendarPopup(True)
         self.release_date_edit.setDate(QDate.currentDate())
         self.release_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.notes_edit = QLineEdit()
         self.notes_edit.setMaximumHeight(80)
+        
+        self.can_special_gear_cb = QCheckBox("可拥有特殊兵装")
+        self.special_gear_name_edit = QLineEdit()
+        self.special_gear_name_edit.setEnabled(False)
+        self.special_gear_date_edit = QDateEdit()
+        self.special_gear_date_edit.setCalendarPopup(True)
+        self.special_gear_date_edit.setDate(QDate.currentDate())
+        self.special_gear_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.special_gear_date_edit.setEnabled(False)
+        self.special_gear_acquire_edit = QLineEdit()
+        self.special_gear_acquire_edit.setEnabled(False)
+        self.can_special_gear_cb.toggled.connect(self.toggle_special_gear)
+
         self.image_path_edit = QLineEdit()
 
         basic_form.addRow("名称:", self.name_edit)
@@ -126,6 +139,12 @@ class AddShipDialog(QDialog):
         basic_form.addRow("首次登场活动:", self.debut_event_edit)
         basic_form.addRow("实装时间:", self.release_date_edit)
         basic_form.addRow("备注:", self.notes_edit)
+
+        # 特殊兵装组（可折叠/启用）
+        basic_form.addRow("", self.can_special_gear_cb)
+        basic_form.addRow("特殊兵装名称:", self.special_gear_name_edit)
+        basic_form.addRow("实装日期:", self.special_gear_date_edit)
+        basic_form.addRow("获取途径:", self.special_gear_acquire_edit)
         basic_form.addRow("立绘地址:", self.image_path_edit)
 
         #content_layout.addWidget(basic_group)
@@ -300,6 +319,13 @@ class AddShipDialog(QDialog):
         layout.addWidget(plus_btn)
 
         return container, spin  # 返回容器和spin以便后续获取值
+    
+    def toggle_special_gear(self):
+        enabled = self.can_special_gear_cb.isChecked()
+        #print(f"特殊兵装选项 {'启用' if enabled else '禁用'}")
+        self.special_gear_name_edit.setEnabled(enabled)
+        self.special_gear_date_edit.setEnabled(enabled)
+        self.special_gear_acquire_edit.setEnabled(enabled)
 
     def update_default_affects(self, ship_class):
         # 先全部取消勾选
@@ -368,6 +394,12 @@ class AddShipDialog(QDialog):
             # 如果使用 QLineEdit，则是 remodel_date = self.remodel_date_edit.text().strip()
         else:
             remodel_date = ""
+        if self.can_special_gear_cb.isChecked():
+            special_gear_name = self.special_gear_name_edit.text()
+            special_gear_date = self.special_gear_date_edit.date().toString("yyyy-MM-dd")
+            special_gear_acquire = self.special_gear_acquire_edit.text()
+        else:
+            special_gear_name = special_gear_date = special_gear_acquire = ""
         manual_id = self.id_spin.value()
         ship_id = 0 if manual_id == 0 else manual_id
 
@@ -424,6 +456,10 @@ class AddShipDialog(QDialog):
             "tech_points_120": tech_points_120,
             "bonus_obtain": bonus_obtain,
             "bonus_120": bonus_120,
+            "can_special_gear": self.can_special_gear_cb.isChecked(),
+            "special_gear_name": special_gear_name,
+            "special_gear_date": special_gear_date, 
+            "special_gear_acquire": special_gear_acquire
         }
         ship_kwargs.update(attr_kwargs)  # 将九属性字段合并进去
 

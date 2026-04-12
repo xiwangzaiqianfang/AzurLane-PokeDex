@@ -1,4 +1,6 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QDialog, QFileDialog, QMessageBox
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
+                               QDialog, QFileDialog, QMessageBox, QLabel,
+                               QPushButton, QSizePolicy, QFrame)
 from PySide6.QtCore import Qt
 from gui.filter_bar import FilterBar
 from gui.ship_list_widget import ShipListWidget
@@ -21,9 +23,30 @@ class MainPage(QWidget):
 
         # 顶部工具栏布局（包含筛选栏和主题切换按钮）
         self.filter_bar = FilterBar()
-        self.filter_bar.fleet_tech_clicked.connect(self.main_window.show_fleet_tech)
-        self.filter_bar.theme_toggled.connect(self.main_window.toggle_theme)
+        #self.filter_bar.fleet_tech_clicked.connect(self.main_window.show_camp_tech)
+        #self.filter_bar.attr_bonus_clicked.connect(self.main_window.show_attr_bonus)
+        #self.filter_bar.theme_toggled.connect(self.main_window.toggle_theme)
         layout.addWidget(self.filter_bar)
+
+        self.info_bar = QFrame()
+        self.info_bar.setObjectName("infoBar")
+        self.info_bar.setVisible(False)
+        self.info_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.info_bar.setMinimumHeight(48)
+        info_layout = QHBoxLayout(self.info_bar)
+        info_layout.setContentsMargins(12, 8, 12, 8)
+        info_layout.setSpacing(10)
+        icon_label = QLabel("❗")
+        icon_label.setStyleSheet("font-size: 18px;")
+        info_layout.addWidget(icon_label)
+        self.info_bar_msg = QLabel("您正在使用测试版本，部分功能可能不稳定，请谨慎使用。")
+        info_layout.addWidget(self.info_bar_msg)
+        info_layout.addStretch()
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(32, 32)
+        close_btn.clicked.connect(lambda: self.info_bar.hide())
+        info_layout.addWidget(close_btn)
+        layout.addWidget(self.info_bar)
 
         # 分割器
         self.splitter = QSplitter(Qt.Horizontal)
@@ -39,11 +62,12 @@ class MainPage(QWidget):
         self.detail_widget.main_window = self.main_window
         self.splitter.addWidget(self.detail_widget)
 
-        self.splitter.setSizes([400, 900])
+        self.splitter.setSizes([450, 850])
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         
         self.ship_list.setMinimumWidth(0)
+        self.check_and_show_test_version_info()
 
     def setup_signals(self):
         self.filter_bar.filter_changed.connect(self.apply_filter)
@@ -100,18 +124,29 @@ class MainPage(QWidget):
         self.filter_bar.reset()
         self.apply_filter({})
 
-    def on_ship_updated(self, new_ship):
+    def on_ship_updated(self, old_id, new_ship):
+        print("接收到更新信号，旧 ID:", old_id, "新船:", new_ship)
+        if new_ship is None:
+            return
         # 更新数据管理器中的对应船
-        for i, s in enumerate(self.manager.ships):
-            if s.id == new_ship.id:
-                self.manager.ships[i] = new_ship
-                break
-        self.manager.save()
-        # 只更新列表中对应的行，而不刷新整个列表
-        self.ship_list.update_ship(new_ship)
+        old_ship = self.detail_widget.current_ship
+        if old_ship is None:
+            print("无法获取当前选中的舰船")
+            return
+        success = self.manager.update_ship(old_id, new_ship)
+        if not success:
+            print("更新失败，可能用户取消了冲突处理")
+            return
+        # 更新左侧列表显示
+        self.apply_filter(self.filter_bar.get_criteria())
         # 如果当前详情页显示的正是这艘船，刷新详情页
         if self.detail_widget.current_ship and self.detail_widget.current_ship.id == new_ship.id:
             self.detail_widget.set_ship(new_ship)
+        #for i, s in enumerate(self.manager.ships):
+        #    if s.id == new_ship.id:
+        #        self.manager.ships[i] = new_ship
+        #        break
+        #self.manager.save()
 
     def on_sort_order_changed(self, key, reverse):
         """用户改变排序方式时，重新排序当前列表"""
@@ -128,22 +163,28 @@ class MainPage(QWidget):
         self.ship_list.set_ships(sorted_ships)
 
     def show_add_ship_dialog(self):
-        print("打开新增舰船对话框")
-        dlg = AddShipDialog(self)
-        if dlg.exec() == QDialog.Accepted:
-            print("用户点击确定")
-            new_ship = dlg.get_ship()
-            if new_ship is None:
-                return
-            print(f"获取到新船: {new_ship.name}")
-            self.manager.add_ship(new_ship)
-            ship_names = [ship.name for ship in self.manager.ships]
-            self.filter_bar.set_ship_names(ship_names)
-            print("已调用 manager.add_ship")
-            # 刷新列表（可能需要重新应用当前筛选）
-            self.apply_filter(self.filter_bar.get_criteria())
-        else:
-            print("用户取消")
+        if getattr(self, '_adding_ship', False):
+            return
+        self._adding_ship = True
+        try:
+            print("打开新增舰船对话框")
+            dlg = AddShipDialog(self)
+            if dlg.exec() == QDialog.Accepted:
+                print("用户点击确定")
+                new_ship = dlg.get_ship()
+                if new_ship is None:
+                    return
+                print(f"获取到新船: {new_ship.name}")
+                self.manager.add_ship(new_ship)
+                ship_names = [ship.name for ship in self.manager.ships]
+                self.filter_bar.set_ship_names(ship_names)
+                print("已调用 manager.add_ship")
+                # 刷新列表（可能需要重新应用当前筛选）
+                self.apply_filter(self.filter_bar.get_criteria())
+            else:
+                print("用户取消")
+        finally:
+                self._adding_ship = False
 
     def switch_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择 JSON 数据文件", "", "JSON (*.json)")
@@ -272,3 +313,13 @@ class MainPage(QWidget):
             self.detail_widget.set_ship(ship)
         else:
             self.detail_widget.clear()
+
+    def check_and_show_test_version_info(self):
+        version = self.manager.get_program_version()
+        # 判断是否为测试版本（版本号包含 beta、test、dev、alpha 等）
+        test_keywords = ['beta', 'test', 'dev', 'alpha']
+        is_test = any(keyword in version.lower() for keyword in test_keywords)
+        if is_test:
+            self.info_bar.setVisible(True)
+        else:
+            self.info_bar.setVisible(False)

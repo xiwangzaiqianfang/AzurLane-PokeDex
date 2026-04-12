@@ -234,6 +234,8 @@ class FilterBar(QWidget):
             self.adv_panel.not_max_cb.setChecked(False)
             self.adv_panel.not_level120_cb.setChecked(False)
             self.adv_panel.can_remodel_not_cb.setChecked(False)
+            self.adv_panel.special_gear_obtained_cb.setChecked(False)
+            self.adv_panel.special_gear_not_obtained_cb.setChecked(False)
 
     def on_advanced_filter_changed(self, adv_criteria):
         """高级面板的筛选条件变化时，与基础条件合并后发射"""
@@ -347,3 +349,9 @@ class FilterBar(QWidget):
 
     def batch_set_remodeled_false(self):
         self.batch_operation_signal.emit("remodeled_false", self.get_criteria())
+
+    def batch_set_special_gear_obtained_true(self):
+        self.batch_operation_signal.emit("special_gear_obtained_true", self.get_criteria())
+
+    def batch_set_special_gear_obtained_false(self):
+        self.batch_operation_signal.emit("special_gear_obtained_false", self.get_criteria())

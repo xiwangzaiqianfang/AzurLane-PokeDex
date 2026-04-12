@@ -5,10 +5,12 @@ import json
 import os
 import certifi
 import datetime
+import copy
 from models import Ship
 from typing import Optional
 from dataclasses import asdict
 from PySide6.QtCore import QObject, Signal
+from utils import resource_path
 
 SALT = "AzurLaneDex_Salt_2025"
 
@@ -29,15 +31,15 @@ class ShipManager(QObject):
         self.config = self.load_config()
         self.version = "0.9.5"
         self.ships: list[Ship] = []
-        theme_mode = self.config.get("theme_mode", "system")
-        if theme_mode == "system":
-            self.current_theme = "light"
+        #theme_mode = self.config.get("theme_mode", "system")
+        #if theme_mode == "system":
+        #    self.current_theme = "light"
         #elif self.current_theme == "light":
         #   self.current_theme = "light"
         #elif self.current_theme == "dark":
         #   self.current_theme = "dark"
-        else:
-            self.current_theme = theme_mode
+        #else:
+        #    self.current_theme = theme_mode
         #   self.current_theme = "light"
         self.load()
 
@@ -329,7 +331,13 @@ class ShipManager(QObject):
             elif field == "not_level120" and value:
                 result = [s for s in result if s.owned and not s.level_120]
             elif field == "can_remodel_not" and value:
-                result = [s for s in result if s.can_remodel and not s.remodeled]
+                result = [s for s in result if s.owned and s.can_remodel and not s.remodeled]
+            elif field == "can_special_gear" and value:
+                result = [s for s in result if s.can_special_gear]
+            elif field == "special_gear_obtained" and value:
+                result = [s for s in result if s.can_special_gear and s.special_gear_obtained]
+            elif field == "special_gear_not_obtained" and value:
+                result = [s for s in result if s.owned and s.can_special_gear and not s.special_gear_obtained]
         return result
 
     def sort(self, ships: list[Ship], key: str, reverse: bool = False) -> list[Ship]:
@@ -353,6 +361,8 @@ class ShipManager(QObject):
                     return "9999-99-99"  # 极大字符串
                 return date
             return sorted(ships, key=date_key, reverse=reverse)
+        elif key == "level_120":
+            return sorted(ships, key=lambda s: s.level_120, reverse=reverse)
         return ships
     
     def calculate_fleet_tech(self):
@@ -474,6 +484,10 @@ class ShipManager(QObject):
         remodeled = [s for s in self.ships if s.remodeled]
         can_remodel_not = [s for s in self.ships if s.can_remodel and not s.remodeled]
         level120 = [s for s in self.ships if s.level_120]
+        can_remodel_total = [s for s in self.ships if s.can_remodel]
+        can_special_gear = [s for s in self.ships if s.can_special_gear]
+        special_gear_obtained = [s for s in self.ships if s.can_special_gear and s.special_gear_obtained]
+        special_gear_not_obtained = [s for s in self.ships if s.can_special_gear and not s.special_gear_obtained]
         return {
             'total': total,
             'owned': len(owned),
@@ -484,9 +498,14 @@ class ShipManager(QObject):
             'remodeled': len(remodeled),
             'can_remodel_not': len(can_remodel_not),
             'level120': len(level120),
+            'can_remodel_total': len(can_remodel_total),
+            'can_special_gear': len(can_special_gear),
+            'special_gear_obtained': len(special_gear_obtained),
+            'special_gear_not_obtained': len(special_gear_not_obtained)
         }
     
     def add_ship(self, ship: Ship):
+        existing_ids = {s.id for s in self.ships}
         # 处理 game_order
         if ship.game_order != 0:
             existing = next((s for s in self.ships if s.game_order == ship.game_order), None)
@@ -515,7 +534,6 @@ class ShipManager(QObject):
             max_order = max((s.game_order for s in self.ships), default=0)
             ship.game_order = max_order + 1
             """添加新船，若 ship.id 为 0 则自动分配，否则检查冲突并可能自动调整"""
-            existing_ids = {s.id for s in self.ships}
         
         if ship.id == 0:
             # 自动分配：取最大 ID + 1
@@ -542,8 +560,102 @@ class ShipManager(QObject):
         self.ships.append(ship)
         self.ships.sort(key=lambda s: s.game_order)
         self.save()
+        #print(f"保存的 can_special_gear: {ship.can_special_gear}")
         print(f"已添加舰船 ID={ship.id}, 当前总数为 {len(self.ships)}")
         return ship.id
+    
+    def update_ship(self, old_id, new_ship):
+        """
+        更新指定 ID 的舰船数据
+        :param ship_id: 原舰船的 ID
+        :param old_id: 原舰船的 ID
+        :param new_ship: 新的 Ship 对象（应包含更新后的所有字段）
+        :return: 是否成功
+        """
+        # 1. 处理 ID 变更
+        new_ship = copy.deepcopy(new_ship)
+        #print(f"[1] 传入 new_ship 的 special_gear_name: {new_ship.special_gear_name}")
+        #print(f"更新前 ID: {old_id}, 新 ID: {new_ship.id}")
+        # 查找所有匹配的索引（理论上只有一个）
+        indices = [i for i, s in enumerate(self.ships) if s.id == old_id]
+        if not indices:
+            return False
+        # 替换所有匹配的项（通常只有一个）
+        for i in indices:
+            self.ships[i] = new_ship
+        # 如果存在重复，删除多余的（这里简单处理：保留最后一个替换的，删除其他）
+        # 但更推荐在数据加载时保证 ID 唯一性。
+        # 去重
+        seen = set()
+        unique_ships = []
+        for s in self.ships:
+            if s.id not in seen:
+                seen.add(s.id)
+                unique_ships.append(s)
+            else:
+                print(f"警告：发现重复 ID {s.id}，已跳过")
+        self.ships = unique_ships
+        #print(f"[2] 替换后列表中对应 ID 的船的 special_gear_name: {self.ships[-1].special_gear_name}")
+        #if new_ship.id != old_id:
+        #    conflict = next((s for s in self.ships if s.id == new_ship.id), None)
+            #print(f"用户输入的 ID: {self.id_spin.value()}")
+        #    if conflict:
+        #        from PySide6.QtWidgets import QMessageBox
+        #        reply = QMessageBox.question(
+        #            None, "ID 冲突",
+        #            f"ID {new_ship.id} 已被 {conflict.name} 占用。\n"
+        #            f"是否自动分配新 ID？",
+        #            QMessageBox.Yes | QMessageBox.No
+        #        )
+        #        if reply == QMessageBox.No:
+        #            return False
+        #        else:
+        #            # 自动分配新 ID
+        #            max_id = max((s.id for s in self.ships), default=0)
+        #            new_ship.id = max_id + 1
+        #        # 移除旧船，添加新船
+        #        self.ships = [s for s in self.ships if s.id != old_id]
+        #        self.ships.append(new_ship)
+        #        print(f"[2] 替换后列表中对应 ID 的船的 special_gear_name: {self.ships[-1].special_gear_name}")
+        #    else:
+        #        # ID 未变，直接替换
+        #        for i, s in enumerate(self.ships):
+        #            if s.id == old_id:
+        #                self.ships[i] = new_ship
+        #                print(f"[2] 替换后列表中索引 {i} 的船的 special_gear_name: {self.ships[i].special_gear_name}")
+        #                break
+
+        # 2. 处理 game_order 冲突（如果需要）
+        # 如果 game_order 发生变化，检查冲突
+        # 注意：new_ship 可能已经在上面的分支中更新了 ID，但 game_order 可能已由用户修改
+        # 我们检测是否有其他船占用相同的 game_order（排除自身）
+        #print(f"[3] 处理 game_order 冲突前，new_ship 的 special_gear_name: {new_ship.special_gear_name}")
+        conflict_order = next((s for s in self.ships if s.id != new_ship.id and s.game_order == new_ship.game_order), None)
+        if conflict_order:
+            from PySide6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                None, "图鉴顺序冲突",
+                f"图鉴顺序 {new_ship.game_order} 已被 {conflict_order.name} 占用。\n"
+                f"是否自动将 {new_ship.game_order} 及之后的船顺序向后延后一位？",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                for s in self.ships:
+                    if s.id != new_ship.id and s.game_order >= new_ship.game_order:
+                        s.game_order += 1
+            else:
+                return False  # 用户取消更新
+
+        # 替换列表中的对象
+        #print(f"[4] 处理 game_order 冲突后，new_ship 的 special_gear_name: {new_ship.special_gear_name}")
+        temp = new_ship
+        self.ships.sort(key=lambda s: s.game_order)
+        #print(f"[5] 排序后，temp 的 special_gear_name: {temp.special_gear_name}")
+        #print(f"[5] 排序后，列表中 ID {new_ship.id} 的船的 special_gear_name: {next(s for s in self.ships if s.id == new_ship.id).special_gear_name}")
+        self.save()
+        updated = next((s for s in self.ships if s.id == new_ship.id), None)
+        print(f"更新后，列表中 ID {new_ship.id} 的对象: {updated}")
+        return True
 
     def switch_file(self, new_path):
         self.filepath = new_path
@@ -715,12 +827,12 @@ class ShipManager(QObject):
     
     def get_program_version(self):
         """读取程序版本号"""
-        version_file = os.path.join(os.path.dirname(self.filepath), "version.json")
+        version_file = (resource_path("version.json"))
         if os.path.exists(version_file):
             try:
                 with open(version_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    return data.get("version", "1.0.0")
+                    return data.get("version", "0.0.0")
             except:
-                return "1.0.0"
-        return "1.0.0"
+                return "0.0.0"
+        return "0.0.0"

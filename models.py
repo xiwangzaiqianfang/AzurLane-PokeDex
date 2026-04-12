@@ -19,6 +19,8 @@ class Ship:
     remodeled: bool = False
     oath: bool = False
     level_120: bool = False
+    can_special_gear: bool = False
+    special_gear_obtained: bool = False
 
     # 获取方式
     acquire_main: str = ""
@@ -32,6 +34,10 @@ class Ship:
     debut_event: str = ""
     release_date: str = ""
     notes: str = ""
+    
+    special_gear_name: str = ""          # 特殊兵装名称
+    special_gear_date: str = ""          # 实装日期
+    special_gear_acquire: str = ""       # 特殊兵装获取方式
 
     # 科技点数据（每个属性三阶段：获得、满破、120级）
     tech_points_obtain: int = 0

@@ -6,10 +6,6 @@ QDialog {
     background-color: #f3f3f3;
 }
 
-QWidget#detailWidget {
-    background-color: #f3f3f3;
-}
-
 QTableWidget::item:selected {
     background-color: #3183ca;
     color: #ffffff;
@@ -43,17 +39,12 @@ QPushButton:disabled {
     color: #ffffff;
 }
 
-QComboBox, QSpinBox, QLineEdit {
-    border-radius: 4px;
-    padding: 4px;
-    border: 1px solid #aaa;
-    color: #333;
-    background-color: white;
+QComboBox, QSpinBox, QLineEdit，QDateEdit {
+    padding: 4px 12px;
 }
 
-QComboBox:hover, QSpinBox:hover, QLineEdit:hover {
-    border-color: #1975c5;
-    color: #333;
+QDateEdit {
+    height: 26px;
 }
 
 /* QComboBox 下拉菜单 */
@@ -61,30 +52,16 @@ QComboBox QAbstractItemView {
     min-width: 100px;
     margin-top: 4px;
     border-radius: 4px;
-    border: 1px solid #c0c0c0;
-    background-color: #f9f9f9;
     outline: none;
     padding: 4px 0;
-    selection-background-color: #e0e0e0;
-    selection-color: #333;
-    color: #333;
 }
+
 QComboBox QAbstractItemView::item {
     padding: 6px 12px;
-    color: #333;
-}
-QComboBox QAbstractItemView::item:selected {
-    background-color: #3183ca;
-    color: #ffffff;
-}
-QComboBox QAbstractItemView::item:hover {
-    background-color: #f0f0f0;
-    color: #333;
 }
 
 QCheckBox {
     spacing: 5px;
-
 }
 
 QGroupBox {
@@ -122,6 +99,7 @@ QToolButton:hover {
 QToolButton:pressed {
     background-color: #3183ca;
 }
+
 QToolButton::menu-indicator {
     width: 22px;                /* 箭头区域宽度 */
     subcontrol-position: right center;
@@ -134,7 +112,6 @@ QToolButton::menu-indicator:open {
 
 /* QMenu 仿 WinUI3 弹出菜单 */
 QMenu {
-    background-color: #f9f9f9;
     border: 1px solid #c0c0c0;
     border-radius: 4px;
     padding: 4px 0;
@@ -231,17 +208,100 @@ QListWidget {
     border: none;
     outline: none;
 }
-QListWidget::item {
-    padding: 8px;
-    margin: 2px 4px;
+
+QListWidget::item, QPushButton#navItem {
+    padding: 8px 16px;
+    margin: 2px 8px;
     border-radius: 6px;
     color: #333;
-    border-bottom: 1px solid #e0e0e0;
+    background-color: transparent;
 }
+
+QListWidget::item QIcon {
+    margin-right: 12px;
+}
+
+/* 鼠标悬停 */
+QListWidget::item:hover, QPushButton#navItem:hover {
+    background-color: #ededed;
+}
+
+/* 按下状态（鼠标左键按下但未松开） */
+QListWidget::item:pressed, QPushButton#navItem:pressed {
+    background-color: #ebebeb;
+    color: #969696;
+}
+
 QListWidget::item:selected {
-    background-color: #3183ca;
-    color: white;
+    background-color: #ededed;
 }
+
 QListWidget::item:hover:!selected {
-    background-color: #f3f3f3;
+    background-color: #ebebeb;
+}
+
+QStackedWidget {
+    background-color: #f9f9f9;
+    border-top-left-radius: 12px;   /* 左上角圆角 */
+    /* 其他角不设置，保持直角 */
+}
+
+QFrame#statCard {
+    background-color: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e0e0e0;
+}
+
+QLabel#statValue {
+    color: #0078d4;
+}
+
+QLabel#statTitle {
+    color: #333;
+    font-size: 14px;
+}
+
+QProgressBar {
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    text-align: center;
+    background-color: #f0f0f0;
+}
+
+QProgressBar::chunk {
+    background-color: #0078d4;
+    border-radius: 9px;
+}
+
+/* 日历顶部导航栏（月份、年份区域） */
+QCalendarWidget QToolButton {
+    background-color: transparent;
+    color: #333;
+    border: none;
+    font-weight: bold;
+}
+QCalendarWidget QToolButton:hover {
+    background-color: #e0e0e0;
+}
+
+QFrame#infoBar {
+    background-color: #fff4ce;
+    margin: 0px;
+    padding: 0px;
+}
+QFrame#infoBar QLabel {
+    color: #333;
+    font-size: 13px;
+}
+QFrame#infoBar QPushButton {
+    background: transparent;
+    border: none;
+    background-color: transparent;
+    color: #000000;
+    font-size: 16px;
+    font-weight: bold;
+}
+QFrame#infoBar QPushButton:hover {
+    background-color: #f6ebc7;
+    color: #000000;
 }

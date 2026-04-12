@@ -22,7 +22,7 @@ class AdvancedFilterPanel(QWidget):
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(5)
+        grid.setVerticalSpacing(6)
 
         checkboxes = [
             (0, 0, "已获得", "owned"),
@@ -34,7 +34,10 @@ class AdvancedFilterPanel(QWidget):
             (3, 0, "已满破", "max_breakthrough"),
             (3, 1, "未满破", "not_max"),
             (4, 0, "120级", "level_120"),
-            (4, 1, "未120级", "not_level120")
+            (4, 1, "未120级", "not_level120"),
+            (5, 0, "可获得特殊兵装", "can_special_gear"),
+            (5, 1, "已获得特殊兵装", "special_gear_obtained"),
+            (6, 0, "未获得特殊兵装", "special_gear_not_obtained"),
         ]
 
         
@@ -97,6 +100,12 @@ class AdvancedFilterPanel(QWidget):
                     criteria['level_120'] = True
                 elif key == "not_level120":
                     criteria['not_level120'] = True
+                elif key == "can_special_gear":
+                    criteria['can_special_gear'] = True
+                elif key == "special_gear_obtained":
+                    criteria['special_gear_obtained'] = True
+                elif key == "special_gear_not_obtained":
+                    criteria['special_gear_not_obtained'] = True
         #if self.owned_cb.isChecked():
         #    criteria['owned'] = True
         #if self.not_owned_cb.isChecked():
@@ -117,6 +126,10 @@ class AdvancedFilterPanel(QWidget):
         #    criteria['level_120'] = True
         #if self.not_level120_cb.isChecked():
         #    criteria['not_level120'] = True
+        #if self.has_geared_cb.isChecked():
+        #    criteria['has_geared'] = True
+        #if self.not_has_geared_cb.isChecked():
+        #    criteria['not_has_geared'] = True
         self.filter_changed.emit(criteria)
         #print("高级面板发射条件:", criteria)  # 调试输出
 
@@ -134,6 +147,8 @@ class AdvancedFilterPanel(QWidget):
         #self.not_max_cb.setChecked(criteria.get('not_max', False))
         #self.level120_cb.setChecked(criteria.get('level_120', False))
         #self.not_level120_cb.setChecked(criteria.get('not_level120', False))
+        #self.has_geared_cb.setChecked(criteria.get('has_geared', False))
+        #self.not_has_geared_cb.setChecked(criteria.get('not_has_geared', False))
 
     def closeEvent(self, event):
         """关闭时隐藏（不销毁），下次点击按钮可直接显示"""
