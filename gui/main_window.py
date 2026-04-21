@@ -8,12 +8,14 @@ from PySide6.QtCore import (Qt, QSettings, Signal, QUrl, QTimer, QThread, QParal
 from PySide6.QtGui import QPixmap, QDesktopServices, QIcon
 from gui.navigationlistweidget import NavigationListWidget
 from manager import ShipManager
+from utils import load_icon, resource_path
 from gui.main_page import MainPage
 #from gui.fleet_tech_page import FleetTechPage
 from gui.camp_tech_page import CampTechPage
 from gui.attr_bonus_page import AttrBonusPage
 from gui.stats_page import StatPage
 from gui.settings_page import SettingsPage
+from gui.detail_widget import DetailWidget
 
 class LoaderThread(QThread):
     finished = Signal(object)   # 传递 manager 对象
@@ -24,10 +26,10 @@ class LoaderThread(QThread):
 
 class MainWindow(QMainWindow):
     windowResized = Signal()
+
     def __init__(self, manager=None):
-        print("MainWindow __init__ start")
+        #print("MainWindow __init__ start")
         super().__init__()
-        ##try:
         self.setWindowTitle("碧蓝航线图鉴")
         self.resize(1400, 700)
         self.setMinimumWidth(800)
@@ -78,7 +80,7 @@ class MainWindow(QMainWindow):
             self.stacked_widget.setCurrentWidget(self.main_widget)
         else:
             # 启动后台加载线程
-            self.stacked_widget.setCurrentWidget(self.loading_widget)
+            #self.stacked_widget.setCurrentWidget(self.loading_widget)
             self.loader_thread = LoaderThread()
             self.loader_thread.finished.connect(self.on_loading_finished)
             self.loader_thread.start()
@@ -92,6 +94,7 @@ class MainWindow(QMainWindow):
 
     def setup_main_ui(self):
         """构建主界面的所有控件和布局（原来 __init__ 中的内容）""" 
+        theme = getattr(self.manager, 'current_theme', 'light')
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
@@ -115,23 +118,26 @@ class MainWindow(QMainWindow):
         self.nav_list = NavigationListWidget()
         self.nav_list.rowReleased.connect(self.switch_page)
         self.nav_list.setFixedWidth(200)
-        self.nav_list.setMinimumWidth(64)
+        self.nav_list.setMinimumWidth(80)
         self.nav_list.setMaximumWidth(200)
         self.nav_list.setMinimumHeight(400)
+        self.nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nav_list.setIconSize(QSize(24, 24))
         self.nav_list.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         menu_items = [
-            ("舰船图鉴", "icons/ship.png"), ("阵营科技", "icons/camp_tech.png"),
-            ("属性加成", "icons/attr_bonus.png"), ("统计", "icons/stats.png"), ("设置", "icons/settings.png"),
+            ("舰船图鉴", "ship", "ship"), ("阵营科技", "camp_tech", "camp"),
+            ("属性加成", "attr_tech", "attr"), ("统计", "stats", "stats"), ("设置", "settings", "settings"),
         ]
-        self.nav_items = []
-        for text, icon_path in menu_items:
-            item = QListWidgetItem(QIcon(icon_path), text)
+        self.nav_items = [] # 存储 (QListWidgetItem, category, icon_name)
+        for text, category, icon_name in menu_items:
+            item = QListWidgetItem(text)
             item.setData(Qt.UserRole, text)
+            item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            # 设置初始图标（正常状态）
+            icon_path = resource_path(f"assets/icons/{category}/{icon_name}_normal_{theme}.svg")
+            item.setIcon(QIcon(icon_path))
             self.nav_list.addItem(item)
-            self.nav_items.append(item)
-        nav_layout.addWidget(self.nav_list, 1)
-        main_layout.addWidget(nav_container, 0, Qt.AlignTop)
+            self.nav_items.append((item, category, icon_name))
 
         #动画指示器
         self.nav_list.currentRowChanged.connect(self.on_nav_row_changed)
@@ -139,6 +145,9 @@ class MainWindow(QMainWindow):
         self.indicator.setFixedWidth(4)  # 指示条宽度
         self.indicator.setStyleSheet("border-radius: 2px;")
         self.indicator.hide()  # 初始隐藏，第一次选中时显示
+        
+        nav_layout.addWidget(self.nav_list)
+        main_layout.addWidget(nav_container, 0, Qt.AlignTop)
 
         #堆叠区域
         self.stacked = QStackedWidget()
@@ -188,6 +197,20 @@ class MainWindow(QMainWindow):
         #    self.manager.current_theme = theme_mode
         #    self.load_theme()
         self.setup_theme_monitor()
+        self.nav_list.show()
+        nav_container.show()
+        #nav_container.setWindowFlags(Qt.Widget)
+
+        print("=== 布局调试 ===")
+        print("main_layout 子控件数量:", main_layout.count())
+        for i in range(main_layout.count()):
+            w = main_layout.itemAt(i).widget()
+            if w:
+                print(f"  子控件 {i}: {w} 宽度={w.width()} 可见={w.isVisible()}")
+        print("nav_container 宽度:", nav_container.width())
+        print("nav_list 宽度:", self.nav_list.width())
+        print("nav_list 可见:", self.nav_list.isVisible())
+        print("nav_list 项目数:", self.nav_list.count())
 
     def switch_page(self, row):
         self.switch_page_with_fade(row)
@@ -214,7 +237,6 @@ class MainWindow(QMainWindow):
         self.fade_out.setEndValue(0.0)
         self.fade_out.finished.connect(lambda: self._perform_switch(current_widget, new_widget, new_index))
         self.fade_out.start()
-
 
     def _perform_switch(self, old_widget, new_widget, new_index):
         print("_perform_switch called")
@@ -264,10 +286,10 @@ class MainWindow(QMainWindow):
         #print(f"Loading theme: {theme}, path: {style_path}") #1
         if os.path.exists(style_path):
             with open(style_path, "r", encoding='utf-8') as f:
-                qss = f.read() #2
+                qss = f.read()
                 #print(f"QSS content length: {len(qss)}") #3
                 #print(f"QSS preview: {qss[:200]}") #4
-                QApplication.instance().setStyleSheet(f.read())
+                #QApplication.instance().setStyleSheet(f.read())
             app = QApplication.instance()
             app.setStyleSheet(qss)
             # 强制所有顶级窗口重新应用样式
@@ -303,6 +325,8 @@ class MainWindow(QMainWindow):
             if geometry:
                 self.restoreGeometry(geometry)
             #print("MainWindow showEvent")
+        if hasattr(self, 'manager') and hasattr(self, 'nav_items'):
+            self.refresh_icons()
         super().showEvent(event)
         QTimer.singleShot(100, self.init_indicator)
 
@@ -352,9 +376,26 @@ class MainWindow(QMainWindow):
         new_theme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
         if new_theme != self.manager.current_theme:
             #print(f"[主题] 系统主题变化，新主题: {new_theme}")
-            self.manager.current_theme = new_theme
-            self.load_theme()
-
+            #self.manager.current_theme = new_theme
+            #self.load_theme()
+            return
+        self.manager.current_theme = new_theme
+        load_icon.current_theme = new_theme # 更新全局主题
+        # 重新加载侧边栏图标（正常状态，因为选中状态会随后自动更新）
+        for item, cat, name in self.nav_items:
+            icon_path = resource_path(f"assets/icons/{cat}/{name}_normal_{new_theme}.svg")
+            item.setIcon(QIcon(icon_path))
+        # 如果当前有选中项，重新设置其选中图标
+        current = self.nav_list.currentRow()
+        if current >= 0:
+            item, cat, name = self.nav_items[current]
+            icon_path = resource_path(f"assets/icons/{cat}/{name}_selected_{new_theme}.svg")
+            item.setIcon(QIcon(icon_path))
+        # 刷新设置页面（如果已打开）
+        if hasattr(self, 'settings_page') and self.settings_page.isVisible():
+            self.settings_page.update_icons()   # 需要实现该方法
+        self.load_theme()
+        self.refresh_all_icons()
     #def set_system_theme_follow(self, follow):
     #    print(f"[主题] 跟随系统主题: {follow}")
     #    self.system_follow = follow
@@ -403,9 +444,17 @@ class MainWindow(QMainWindow):
         super().hideEvent(event)
 
     def on_nav_row_changed(self, row):
+        theme = getattr(self.manager, 'current_theme', 'light')
+        for idx, (item, cat, name) in enumerate(self.nav_items):
+            icon_path = resource_path(f"assets/icons/{cat}/{name}_normal_{theme}.svg")
+            item.setIcon(QIcon(icon_path))
         if row < 0:
             self.indicator.hide()
             return
+        else:
+            item, cat, name = self.nav_items[row]
+            icon_path = resource_path(f"assets/icons/{cat}/{name}_selected_{theme}.svg")
+            item.setIcon(QIcon(icon_path))
         item = self.nav_list.item(row)
         # 计算目标位置：列表项的位置 + 指示器偏移
         rect = self.nav_list.visualItemRect(item)
@@ -431,7 +480,7 @@ class MainWindow(QMainWindow):
     def toggle_nav(self):
         self.collapsed = not self.collapsed
         # self.collapsed = not getattr(self, 'collapsed', False)
-        target_width = 64 if self.collapsed else 200
+        target_width = 80 if self.collapsed else 200
         # 动画 minimumWidth
         self.anim_min = QPropertyAnimation(self.nav_list, b"minimumWidth")
         self.anim_min.setDuration(100)
@@ -444,13 +493,15 @@ class MainWindow(QMainWindow):
         self.anim_max.setStartValue(self.nav_list.maximumWidth())
         self.anim_max.setEndValue(target_width)
         self.anim_max.start()
+        # 调整折叠按钮
         if self.collapsed:
-            self.collapse_btn.setFixedWidth(64)
+            self.collapse_btn.setFixedWidth(80)
             self.collapse_btn.setText("▶")
         else:
             self.collapse_btn.setFixedWidth(200)
             self.collapse_btn.setText("◀ 导航")
-        for item in self.nav_items:
+        # 更新列表项的文字和对齐
+        for item, _, _ in self.nav_items:
             if self.collapsed:
                 item.setText("")
                 item.setTextAlignment(Qt.AlignCenter)
@@ -474,7 +525,7 @@ class MainWindow(QMainWindow):
             QApplication.setOverrideCursor(Qt.WaitCursor)
             # 检查程序版本
             latest_version = self.manager.get_latest_version()
-            current_version = "1.0.0"  # 请将当前版本硬编码或从配置文件读取
+            current_version = self.manager.get_program_version()
             if latest_version and latest_version > current_version:
                 ret = QMessageBox.question(
                     self,
@@ -510,3 +561,26 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'stats_page'):
             self.stats_page.load_stats()
         # 主页面本身会通过详情页信号更新，无需重复刷新
+
+    def refresh_icons(self, svg_to_pixmap_min, svg_to_pixmap_max):
+        """刷新所有依赖主题的图标（侧边栏、卡片标题、设置页等）"""
+        theme = self.manager.current_theme
+        # 更新全局主题变量（确保 svg_to_pixmap 函数使用正确的主题）
+        svg_to_pixmap_min.current_theme = theme
+        svg_to_pixmap_max.current_theme = theme
+
+        # 1. 刷新侧边栏图标
+        for idx, (item, category, icon_name) in enumerate(self.nav_items):
+            state = "selected" if idx == self.nav_list.currentRow() else "normal"
+            icon_path = resource_path(f"assets/icons/{category}/{icon_name}_{state}_{theme}.svg")
+            item.setIcon(QIcon(icon_path))
+
+        # 2. 刷新详情页卡片标题图标（如果 DetailWidget 已实例化）
+        if hasattr(self, 'main_page') and hasattr(self.main_page, 'detail_widget'):
+            self.main_page.detail_widget.refresh_icons(theme)
+        #if hasattr(self, 'detail_widget'):
+        #    self.main_page.detail_widget.refresh_icons(theme)
+
+        # 3. 刷新设置页面图标（如果已创建）
+        if hasattr(self, 'settings_page'):
+            self.settings_page.refresh_icons(theme)

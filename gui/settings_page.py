@@ -2,8 +2,9 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QComboBox, QPushButton, QCheckBox, QInputDialog,
                                QMessageBox, QFrame, QScrollArea, QLineEdit)
-from PySide6.QtCore import Qt, QUrl, QTimer
+from PySide6.QtCore import Qt, QUrl, QTimer, QSize
 from PySide6.QtGui import QDesktopServices, QPixmap
+from utils import load_icon, svg_to_pixmap_min, _render_svg_to_pixmap, resource_path
 from manager import ShipManager
 
 class SettingsPage(QWidget):
@@ -39,7 +40,9 @@ class SettingsPage(QWidget):
         app_layout.setAlignment(Qt.AlignCenter)
 
         logo_label = QLabel()
-        pixmap = QPixmap("app_icon.ico").scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        pixmap = QPixmap(resource_path("app_icon.ico"))
+        if not pixmap.isNull():
+            logo_label.setPixmap(pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         logo_label.setPixmap(pixmap)
         logo_label.setAlignment(Qt.AlignCenter)
         app_layout.addWidget(logo_label)
@@ -56,10 +59,22 @@ class SettingsPage(QWidget):
         pwd_card.setObjectName("card")
         pwd_layout = QVBoxLayout(pwd_card)
         pwd_layout.setContentsMargins(15, 15, 15, 15)
-
+        pwd_layout.setAlignment(Qt.AlignVCenter)
+        pwd_title_layout = QHBoxLayout()
+        self.pwd_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("settings", "password", 18)
+        self.pwd_icon_label.setFixedSize(22, 22)
+        self.pwd_icon_label.setAlignment(Qt.AlignCenter)
+        self.pwd_icon_label.setPixmap(pixmap)
+        pwd_title_layout.addWidget(self.pwd_icon_label)
         pwd_title = QLabel("编辑密码")
         pwd_title.setObjectName("cardTitle")
-        pwd_layout.addWidget(pwd_title)
+        pwd_title.setAlignment(Qt.AlignVCenter)
+        pwd_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        pwd_title_layout.setAlignment(Qt.AlignVCenter)
+        pwd_title_layout.addWidget(pwd_title)
+        pwd_title_layout.addStretch()
+        pwd_layout.addLayout(pwd_title_layout)
 
         pwd_row = QHBoxLayout()
         self.pwd_btn = QPushButton("修改编辑密码")
@@ -74,10 +89,22 @@ class SettingsPage(QWidget):
         window_card.setObjectName("card")
         window_layout = QVBoxLayout(window_card)
         window_layout.setContentsMargins(15, 15, 15, 15)
-
+        window_layout.setAlignment(Qt.AlignVCenter)
+        window_title_layout = QHBoxLayout()
+        self.window_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("settings", "window", 18)
+        self.window_icon_label.setFixedSize(22, 22)
+        self.window_icon_label.setAlignment(Qt.AlignCenter)
+        self.window_icon_label.setPixmap(pixmap)
+        window_title_layout.addWidget(self.window_icon_label)
         window_title = QLabel("窗口设置")
         window_title.setObjectName("cardTitle")
-        window_layout.addWidget(window_title)
+        window_title.setAlignment(Qt.AlignVCenter)
+        window_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        window_title_layout.setAlignment(Qt.AlignVCenter)
+        window_title_layout.addWidget(window_title)
+        window_title_layout.addStretch()
+        window_layout.addLayout(window_title_layout)
 
         # 显示当前窗口大小
         self.window_size_label = QLabel()
@@ -96,10 +123,22 @@ class SettingsPage(QWidget):
         update_card.setObjectName("card")
         update_layout = QVBoxLayout(update_card)
         update_layout.setContentsMargins(15, 15, 15, 15)
-
+        update_layout.setAlignment(Qt.AlignVCenter)
+        update_title_layout = QHBoxLayout()
+        self.update_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("settings", "update", 18)
+        self.update_icon_label.setFixedSize(22, 22)
+        self.update_icon_label.setAlignment(Qt.AlignCenter) 
+        self.update_icon_label.setPixmap(pixmap)
+        update_title_layout.addWidget(self.update_icon_label)
         update_title = QLabel("数据更新")
         update_title.setObjectName("cardTitle")
-        update_layout.addWidget(update_title)
+        update_title.setAlignment(Qt.AlignVCenter)
+        update_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        update_title_layout.setAlignment(Qt.AlignVCenter)
+        update_title_layout.addWidget(update_title)
+        update_title_layout.addStretch()
+        update_layout.addLayout(update_title_layout)
 
         update_row = QHBoxLayout()
         self.update_btn = QPushButton("从网络更新舰船数据")
@@ -114,10 +153,22 @@ class SettingsPage(QWidget):
         log_card.setObjectName("card")
         log_layout = QVBoxLayout(log_card)
         log_layout.setContentsMargins(15, 15, 15, 15)
-
+        log_layout.setAlignment(Qt.AlignVCenter)
+        log_title_layout = QHBoxLayout()
+        self.log_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("settings", "log", 18)
+        self.log_icon_label.setFixedSize(22, 22)
+        self.log_icon_label.setAlignment(Qt.AlignCenter) 
+        self.log_icon_label.setPixmap(pixmap)
+        log_title_layout.addWidget(self.log_icon_label)
         log_title = QLabel("日志记录")
         log_title.setObjectName("cardTitle")
-        log_layout.addWidget(log_title)
+        log_title.setAlignment(Qt.AlignVCenter)
+        log_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        log_title_layout.setAlignment(Qt.AlignVCenter)
+        log_title_layout.addWidget(log_title)
+        log_title_layout.addStretch()
+        log_layout.addLayout(log_title_layout)
 
         log_row = QHBoxLayout()
         self.log_cb = QCheckBox("记录编辑操作日志")
@@ -133,19 +184,28 @@ class SettingsPage(QWidget):
         about_card.setObjectName("card")
         about_layout = QVBoxLayout(about_card)
         about_layout.setContentsMargins(15, 15, 15, 15)
-
+        about_layout.setAlignment(Qt.AlignVCenter)
         # 标题行
-        about_title_row = QHBoxLayout()
+        about_title_layout = QHBoxLayout()
+        self.about_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("settings", "info", 18)
+        self.about_icon_label.setFixedSize(22, 22)
+        self.about_icon_label.setAlignment(Qt.AlignCenter) 
+        self.about_icon_label.setPixmap(pixmap)
+        about_title_layout.addWidget(self.about_icon_label)
         about_title = QLabel("关于")
         about_title.setObjectName("cardTitle")
-        about_title_row.addWidget(about_title)
-        about_title_row.addStretch()
+        about_title.setAlignment(Qt.AlignVCenter)
+        about_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        about_title_layout.setAlignment(Qt.AlignVCenter)
+        about_title_layout.addWidget(about_title)
+        about_title_layout.addStretch()
         self.about_btn = QPushButton("▼")
         self.about_btn.setFixedSize(30, 30)
         self.about_btn.setFlat(True)
         self.about_btn.clicked.connect(self.toggle_about)
-        about_title_row.addWidget(self.about_btn)
-        about_layout.addLayout(about_title_row)
+        about_title_layout.addWidget(self.about_btn)
+        about_layout.addLayout(about_title_layout)
 
         # 可展开内容
         self.about_content = QWidget()
@@ -216,3 +276,29 @@ class SettingsPage(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         self.update_window_size_label()
+        self.refresh_icons()
+
+    def refresh_icons(self, theme=None):
+        """根据当前主题刷新所有卡片标题图标"""
+        if theme is None:
+            theme = getattr(self.manager, 'current_theme', 'light')
+        # 刷新编辑密码图标
+        if hasattr(self, 'pwd_icon_label'):
+            pixmap = svg_to_pixmap_min("settings", "password", size=18, theme=theme)
+            self.pwd_icon_label.setPixmap(pixmap)
+        # 刷新窗口设置图标
+        if hasattr(self, 'window_icon_label'):
+            pixmap = svg_to_pixmap_min("settings", "window", size=18, theme=theme)
+            self.window_icon_label.setPixmap(pixmap)
+        # 升级图标
+        if hasattr(self, 'update_icon_label'):
+            pixmap = svg_to_pixmap_min("settings", "update", size=18, theme=theme)
+            self.update_icon_label.setPixmap(pixmap)
+        # 日志图标
+        if hasattr(self, 'log_icon_label'):
+            pixmap = svg_to_pixmap_min("settings", "log", size=18, theme=theme)
+            self.log_icon_label.setPixmap(pixmap)
+        # 关于图标
+        if hasattr(self, 'about_icon_label'):
+            pixmap = svg_to_pixmap_min("settings", "info", size=18, theme=theme)
+            self.about_icon_label.setPixmap(pixmap)

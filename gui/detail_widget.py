@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QLabel, QCheckBox, QSpinBox, QPushButton,
                                QGroupBox, QScrollArea, QGridLayout, QAbstractSpinBox, QFrame, QInputDialog, QLineEdit, QMessageBox, QDialog)
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QSize
 from PySide6.QtGui import QPixmap
 import os
+from utils import load_icon, svg_to_pixmap_min, _render_svg_to_pixmap
 from gui.edit_ship_dialog import EditShipDialog
 
 class DetailWidget(QWidget):
@@ -37,11 +38,24 @@ class DetailWidget(QWidget):
         pic_card.setObjectName("card")
         pic_layout = QVBoxLayout(pic_card)
         pic_layout.setContentsMargins(10, 10, 10, 10)
+        pic_layout.setAlignment(Qt.AlignVCenter)
         #pic_card = QGroupBox("立绘")
         #pic_layout = QVBoxLayout(pic_group)
+        pic_title_layout = QHBoxLayout()
+        self.pic_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "photo", 18)
+        self.pic_icon_label.setFixedSize(22, 22)
+        self.pic_icon_label.setAlignment(Qt.AlignCenter) 
+        self.pic_icon_label.setPixmap(pixmap)
+        pic_title_layout.addWidget(self.pic_icon_label)
         pic_title = QLabel("立绘")
         pic_title.setObjectName("cardTitle")
-        pic_layout.addWidget(pic_title)
+        pic_title.setAlignment(Qt.AlignVCenter)
+        pic_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        pic_title_layout.setAlignment(Qt.AlignVCenter)
+        pic_title_layout.addWidget(pic_title)
+        pic_title_layout.addStretch()
+        pic_layout.addLayout(pic_title_layout)
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
@@ -55,11 +69,24 @@ class DetailWidget(QWidget):
         basic_card.setObjectName("card") 
         card_layout = QVBoxLayout(basic_card)
         card_layout.setContentsMargins(10, 10, 10, 10)
+        card_layout.setAlignment(Qt.AlignVCenter)
         #basic_group = QGroupBox("基本信息")
+        basic_title_layout = QHBoxLayout()
+        self.basic_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "info", 18)
+        self.basic_icon_label.setFixedSize(22, 22) 
+        self.basic_icon_label.setAlignment(Qt.AlignCenter)
+        self.basic_icon_label.setPixmap(pixmap)
+        basic_title_layout.addWidget(self.basic_icon_label)
         title_label = QLabel("基本信息")
         title_label.setObjectName("cardTitle")
-        title_label.setStyleSheet("font-weight: bold;")
-        card_layout.addWidget(title_label)
+        title_label.setAlignment(Qt.AlignVCenter)
+        title_label.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        basic_title_layout.setAlignment(Qt.AlignVCenter)
+        basic_title_layout.addWidget(title_label)
+        basic_title_layout.addStretch()
+        card_layout.addLayout(basic_title_layout)
+
         form = QFormLayout()
         #form = QFormLayout(basic_group)
         form.setContentsMargins(0, 0, 0, 0)
@@ -84,10 +111,22 @@ class DetailWidget(QWidget):
         state_card.setObjectName("card")
         state_layout = QVBoxLayout(state_card)
         state_layout.setContentsMargins(10, 10, 10, 10)
-
+        state_layout.setAlignment(Qt.AlignVCenter)
+        state_title_layout = QHBoxLayout()
+        self.state_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "status", 18)
+        self.state_icon_label.setFixedSize(22, 22)
+        self.state_icon_label.setAlignment(Qt.AlignCenter)
+        self.state_icon_label.setPixmap(pixmap)
+        state_title_layout.addWidget(self.state_icon_label)
         state_title = QLabel("状态")
         state_title.setObjectName("cardTitle")
-        state_layout.addWidget(state_title)
+        state_title.setAlignment(Qt.AlignVCenter)
+        state_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        state_title_layout.setAlignment(Qt.AlignVCenter)
+        state_title_layout.addWidget(state_title)
+        state_title_layout.addStretch()
+        state_layout.addLayout(state_title_layout)
 
         # 水平布局放置复选框和突破控件
         hbox = QHBoxLayout()
@@ -171,10 +210,22 @@ class DetailWidget(QWidget):
         tech_card.setObjectName("card")
         tech_layout = QVBoxLayout(tech_card)
         tech_layout.setContentsMargins(10, 10, 10, 10)
-
+        tech_layout.setAlignment(Qt.AlignVCenter)
+        tech_title_layout = QHBoxLayout()
+        self.tech_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "tech", 18)
+        self.tech_icon_label.setPixmap(pixmap)
+        self.tech_icon_label.setFixedSize(22, 22)
+        self.tech_icon_label.setAlignment(Qt.AlignCenter)
+        tech_title_layout.addWidget(self.tech_icon_label)
         tech_title = QLabel("舰队科技")
         tech_title.setObjectName("cardTitle")
-        tech_layout.addWidget(tech_title)
+        tech_title.setAlignment(Qt.AlignVCenter)
+        tech_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        tech_title_layout.setAlignment(Qt.AlignVCenter)
+        tech_title_layout.addWidget(tech_title)
+        tech_title_layout.addStretch()
+        tech_layout.addLayout(tech_title_layout)
         #attr_group = QGroupBox("舰队科技")
 
         attr_form = QFormLayout()
@@ -201,12 +252,22 @@ class DetailWidget(QWidget):
         acquire_card.setObjectName("card")
         acquire_layout = QVBoxLayout(acquire_card)
         acquire_layout.setContentsMargins(10, 10, 10, 10)
-
-        #acquire_group = QGroupBox("获取方式")
+        acquire_layout.setAlignment(Qt.AlignVCenter)
+        acquire_title_layout = QHBoxLayout()
+        self.acquire_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "acquire", 18)
+        self.acquire_icon_label.setFixedSize(22, 22)
+        self.acquire_icon_label.setAlignment(Qt.AlignCenter)
+        self.acquire_icon_label.setPixmap(pixmap)
+        acquire_title_layout.addWidget(self.acquire_icon_label)
         acquire_title = QLabel("获取方式")
         acquire_title.setObjectName("cardTitle")
-        acquire_layout.addWidget(acquire_title)
-        
+        acquire_title.setAlignment(Qt.AlignVCenter)
+        acquire_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        acquire_title_layout.addWidget(acquire_title)
+        acquire_title_layout.addStretch()
+        acquire_layout.addLayout(acquire_title_layout)
+
         acquire_form = QFormLayout()
         acquire_form.setContentsMargins(0, 0, 0, 0)
         #acquire_form = QFormLayout(acquire_group)
@@ -233,10 +294,23 @@ class DetailWidget(QWidget):
         event_card.setObjectName("card")
         event_layout = QVBoxLayout(event_card)
         event_layout.setContentsMargins(10, 10, 10, 10)
-
+        event_layout.setAlignment(Qt.AlignVCenter)
+        event_title_layout = QHBoxLayout()
+        self.event_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "event", 18)
+        self.event_icon_label.setFixedSize(22, 22)
+        self.event_icon_label.setAlignment(Qt.AlignCenter)
+        self.event_icon_label.setPixmap(pixmap)
+        event_title_layout.addWidget(self.event_icon_label)
         event_title = QLabel("实装活动")
         event_title.setObjectName("cardTitle")
-        event_layout.addWidget(event_title)
+        event_title.setAlignment(Qt.AlignVCenter)
+        event_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        event_title_layout.setAlignment(Qt.AlignVCenter)
+        event_title_layout.addWidget(event_title)
+        event_title_layout.addStretch()
+        event_layout.addLayout(event_title_layout)
+
         #event_group = QGroupBox("实装活动")
         #event_form = QFormLayout(event_group)
         event_form = QFormLayout()
@@ -259,10 +333,22 @@ class DetailWidget(QWidget):
         self.gear_card.setObjectName("card")
         gear_layout = QVBoxLayout(self.gear_card)
         gear_layout.setContentsMargins(10, 10, 10, 10)
-
+        gear_layout.setAlignment(Qt.AlignVCenter)
+        gear_title_layout = QHBoxLayout()
+        self.gear_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("ship", "gear", 18)
+        self.gear_icon_label.setFixedSize(22, 22)
+        self.gear_icon_label.setAlignment(Qt.AlignCenter)
+        self.gear_icon_label.setPixmap(pixmap)
+        gear_title_layout.addWidget(self.gear_icon_label)
         gear_title = QLabel("特殊兵装")
         gear_title.setObjectName("cardTitle")
-        gear_layout.addWidget(gear_title)
+        gear_title.setAlignment(Qt.AlignVCenter)
+        gear_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        gear_title_layout.setAlignment(Qt.AlignVCenter)
+        gear_title_layout.addWidget(gear_title)
+        gear_title_layout.addStretch()
+        gear_layout.addLayout(gear_title_layout)
 
         gear_form = QFormLayout()
         self.gear_name_label = QLabel()
@@ -276,7 +362,10 @@ class DetailWidget(QWidget):
         layout.addWidget(self.gear_card)
 
         # 编辑按钮
+        #edit_icon = load_icon("ship", "edit", state="normal")
         self.edit_btn = QPushButton("编辑详细信息")
+        #self.edit_btn.setIcon(edit_icon)
+        #self.edit_btn.setIconSize(QSize(18, 18))
         self.edit_btn.clicked.connect(self.open_edit_dialog)
         layout.addWidget(self.edit_btn)
 
@@ -522,3 +611,41 @@ class DetailWidget(QWidget):
             self.current_ship = new_ship
             self.data_changed.emit(old_id, new_ship)
             QMessageBox.information(self, "成功", "舰船数据已更新。")
+
+    def showEvent(self, event):
+        """当控件显示时触发"""
+        super().showEvent(event)
+        self.refresh_icons()
+
+    def refresh_icons(self, theme=None):
+        """刷新卡片标题图标（根据主题）"""
+        if theme is None:
+            theme = getattr(self.manager, 'current_theme', 'light')
+        # 立绘卡片
+        if hasattr(self, 'pic_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "photo", size=18, theme=theme)
+            self.pic_icon_label.setPixmap(pixmap)
+        # 基本信息卡片
+        if hasattr(self, 'basic_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "info", size=18, theme=theme)
+            self.basic_icon_label.setPixmap(pixmap)
+        # 状态卡片
+        if hasattr(self, 'state_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "status", size=18, theme=theme)
+            self.state_icon_label.setPixmap(pixmap)
+        # 舰队科技卡片
+        if hasattr(self, 'tech_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "tech", size=18, theme=theme)
+            self.tech_icon_label.setPixmap(pixmap)
+        # 获取方式卡片
+        if hasattr(self, 'acquire_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "acquire", size=18, theme=theme)
+            self.acquire_icon_label.setPixmap(pixmap)
+        # 实装活动卡片
+        if hasattr(self, 'event_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "event", size=18, theme=theme)
+            self.event_icon_label.setPixmap(pixmap)
+        # 特殊兵装卡片
+        if hasattr(self, 'gear_icon_label'):
+            pixmap = svg_to_pixmap_min("ship", "gear", size=18, theme=theme)
+            self.gear_icon_label.setPixmap(pixmap)

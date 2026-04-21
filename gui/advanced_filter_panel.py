@@ -11,7 +11,8 @@ class AdvancedFilterPanel(QWidget):
         super().__init__(parent)
         self.setWindowFlags(Qt.Tool)
         self.setWindowTitle("高级筛选")
-        self.resize(400, 500)
+        self.resize(500, 550)
+        self.setMinimumWidth(450)
         self.setObjectName("advancedFilterPanel")
 
         main_layout = QVBoxLayout(self)

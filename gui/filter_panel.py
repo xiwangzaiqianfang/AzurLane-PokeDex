@@ -9,7 +9,9 @@ class FilterPanel(QWidget):
         self.setWindowFlags(Qt.Tool)  # 工具窗口，不阻塞主窗口
         self.setWindowTitle(title)
         self.setAttribute(Qt.WA_ShowWithoutActivating)  # 不抢焦点
-        self.resize(200, 300)
+        self.resize(600, 550)
+        self.setMinimumWidth(550)
+        self.setObjectName("advancedFilterPanel")
 
         layout = QVBoxLayout(self)
 

@@ -15,6 +15,7 @@ class SplashScreen(QWidget):
         # 应用图标
         icon_label = QLabel()
         pixmap = QPixmap(resource_path("app_icon.ico"))
+        super().__init__(pixmap)
         if not pixmap.isNull():
             pixmap = pixmap.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             icon_label.setPixmap(pixmap)

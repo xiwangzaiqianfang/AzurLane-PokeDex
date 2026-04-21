@@ -88,7 +88,7 @@ QToolButton {
     background-color: #0067c0;
     color: #ffffff;
     border: none;
-    padding: 4.5px 20px 4.5px 15px;  /* 右侧留出箭头空间 */
+    padding: 4.3px 20px 4.3px 15px;  /* 右侧留出箭头空间 */
     border-radius: 4px;
     font-weight: 500;
 }
@@ -121,6 +121,7 @@ QMenu::item {
     padding: 6px 20px;
     background-color: transparent;
     color: #333;
+    font-size: 14px;
 }
 QMenu::item:selected {
     background-color: #e0e0e0;
@@ -190,7 +191,7 @@ QWidget#advancedFilterPanel {
 /* 面板标题 */
 QLabel#panelTitle {
     font-weight: bold;
-    font-size: 14px;
+    font-size: 16px;
     color: #333;
     padding-bottom: 8px;
     border-bottom: 1px solid #e0e0e0;
@@ -258,7 +259,7 @@ QLabel#statValue {
 
 QLabel#statTitle {
     color: #333;
-    font-size: 14px;
+    font-size: 16px;
 }
 
 QProgressBar {
@@ -291,7 +292,7 @@ QFrame#infoBar {
 }
 QFrame#infoBar QLabel {
     color: #333;
-    font-size: 13px;
+    font-size: 16px;
 }
 QFrame#infoBar QPushButton {
     background: transparent;
