@@ -76,7 +76,11 @@ class EditShipDialog(AddShipDialog):
         ship_id = self.id_spin.value()
         #print(f"编辑对话框获取的 ID: {self.id_spin.value()}")
         game_order = self.game_order_spin.value()
-        remodel_date = self.remodel_date_edit.date().toString("yyyy-MM-dd") if self.remodel_date_edit.date().isValid() else None
+        can_remodel = self.can_remodel_cb.isChecked()
+        if can_remodel and self.remodel_date_edit.date().isValid():
+            remodel_date = self.remodel_date_edit.date().toString("yyyy-MM-dd")
+        else:
+            remodel_date = ""
         tech_affects = [key for key, cb in self.affect_checkboxes.items() if cb.isChecked()]
         tech_points_obtain = self.tech_points_obtain.value()
         tech_points_max = self.tech_points_max.value()

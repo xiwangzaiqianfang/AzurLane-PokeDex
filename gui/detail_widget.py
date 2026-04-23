@@ -10,8 +10,10 @@ from gui.edit_ship_dialog import EditShipDialog
 class DetailWidget(QWidget):
     data_changed = Signal(int, object)
 
-    def __init__(self):
+    def __init__(self, dev_mode=False, account_manager=None):
         super().__init__()
+        self.dev_mode = dev_mode
+        self.account_manager = account_manager
         self.setWindowTitle("编辑舰船")
         self.setObjectName("detailWidget")
         self.current_ship = None
@@ -410,6 +412,10 @@ class DetailWidget(QWidget):
 
     def update_display(self):
         #print(f"update_display: current_ship = {self.current_ship}")
+        if self.dev_mode and self.account_manager and self.account_manager.is_developer() and self.current_ship:
+            self.edit_btn.setEnabled(True)
+        else:
+            self.edit_btn.setEnabled(False)
         if not self.current_ship:
             return
         s = self.current_ship
@@ -622,30 +628,30 @@ class DetailWidget(QWidget):
         if theme is None:
             theme = getattr(self.manager, 'current_theme', 'light')
         # 立绘卡片
-        if hasattr(self, 'pic_icon_label'):
+        if hasattr(self, 'self.pic_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "photo", size=18, theme=theme)
             self.pic_icon_label.setPixmap(pixmap)
         # 基本信息卡片
-        if hasattr(self, 'basic_icon_label'):
+        if hasattr(self, 'self.basic_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "info", size=18, theme=theme)
             self.basic_icon_label.setPixmap(pixmap)
         # 状态卡片
-        if hasattr(self, 'state_icon_label'):
+        if hasattr(self, 'self.state_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "status", size=18, theme=theme)
             self.state_icon_label.setPixmap(pixmap)
         # 舰队科技卡片
-        if hasattr(self, 'tech_icon_label'):
+        if hasattr(self, 'self.tech_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "tech", size=18, theme=theme)
             self.tech_icon_label.setPixmap(pixmap)
         # 获取方式卡片
-        if hasattr(self, 'acquire_icon_label'):
+        if hasattr(self, 'self.acquire_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "acquire", size=18, theme=theme)
             self.acquire_icon_label.setPixmap(pixmap)
         # 实装活动卡片
-        if hasattr(self, 'event_icon_label'):
+        if hasattr(self, 'self.event_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "event", size=18, theme=theme)
             self.event_icon_label.setPixmap(pixmap)
         # 特殊兵装卡片
-        if hasattr(self, 'gear_icon_label'):
+        if hasattr(self, 'self.gear_icon_label'):
             pixmap = svg_to_pixmap_min("ship", "gear", size=18, theme=theme)
             self.gear_icon_label.setPixmap(pixmap)

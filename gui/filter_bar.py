@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QComboBox, QPushButton,
-                               QLabel, QLineEdit, QMenu, QMessageBox,
+                               QLabel, QLineEdit, QMenu, QMessageBox,QDialog,
                                QInputDialog, QCompleter, QStyle, QToolButton)
 from PySide6.QtCore import Signal, QStringListModel, QStringListModel
 from PySide6.QtGui import QAction, Qt, QAction
@@ -9,16 +9,21 @@ class FilterBar(QWidget):
     reset_clicked = Signal()
     stat_clicked = Signal()
     add_ship_clicked = Signal()
-    switch_file_clicked = Signal()
-    export_clicked = Signal()
-    import_clicked = Signal()
+    switch_account_clicked = Signal() 
+    export_user_state_clicked = Signal()
+    import_user_state_overwrite_clicked = Signal()
+    import_user_state_new_clicked = Signal()
     update_online_clicked = Signal()
     fleet_tech_clicked = Signal()
     theme_toggled = Signal()
     sort_order_changed = Signal(str, bool)
     batch_operation_signal = Signal(str, dict)
+    export_static_clicked = Signal()
+    import_static_clicked = Signal()
 
-    def __init__(self):
+    def __init__(self, dev_mode=False, account_manager=None):
+        self.dev_mode = dev_mode
+        self.account_manager = account_manager
         super().__init__()
         self.setObjectName("filterBar")
         main_layout = QHBoxLayout(self)
@@ -139,20 +144,36 @@ class FilterBar(QWidget):
         self.emit_filter()
 
     def show_more_menu(self):
+        print("dev_mode:", self.dev_mode)
+        print("account_manager:", self.account_manager)
+        if self.account_manager:
+            print("is_developer:", self.account_manager.is_developer())
         menu = QMenu(self)
-        actions = [
-            ("新建舰船", self.add_ship_clicked),
-            ("切换账号", self.switch_file_clicked),
-            ("导出数据", self.export_clicked),
-            ("导入数据", self.import_clicked),
+        base_actions = [
+            ("切换账户", self.switch_account_clicked),
+            ("导出当前账户数据", self.export_user_state_clicked),
+            ("导入数据并覆盖当前账户", self.import_user_state_overwrite_clicked),
+            ("导入数据并创建新账户", self.import_user_state_new_clicked),
         ]
-        for text, signal in actions:
+        for text, signal in base_actions:
             action = QAction(text, self)
             if callable(signal):
                 action.triggered.connect(signal)
             else:
                 action.triggered.connect(signal.emit)
             menu.addAction(action)
+        # 开发者专属操作（需要开发模式且当前账户为开发者）
+        if self.dev_mode and self.account_manager and self.account_manager.is_developer():
+            menu.addSeparator()
+            dev_actions = [
+                ("新建舰船", self.add_ship_clicked),
+                ("导出静态数据", self.export_static_clicked),
+                ("导入静态数据", self.import_static_clicked),
+            ]
+            for text, signal in dev_actions:
+                action = QAction(text, self)
+                action.triggered.connect(signal.emit)
+                menu.addAction(action)
         menu.exec(self.more_btn.mapToGlobal(self.more_btn.rect().bottomLeft()))
 
     def set_ship_names(self, names):
@@ -228,3 +249,18 @@ class FilterBar(QWidget):
             self.main_window.open_settings()
         else:
             QMessageBox.warning(self, "错误", "无法打开设置页面。")
+
+    def export_static_data(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(self, "导出静态数据", "ships_static.json", "JSON (*.json)")
+        if path:
+            self.manager.export_static(path)
+            QMessageBox.information(self, "完成", f"静态数据已导出至 {path}")
+
+    def show_account_manager(self):
+        from gui.account_dialog import AccountDialog
+        dlg = AccountDialog(self.account_manager, self)
+        if dlg.exec() == QDialog.Accepted:
+            # 切换账户后重新加载数据并刷新界面
+            self.manager.switch_account(self.account_manager.get_current_account())
+            self.refresh_ui()   # 自定义刷新方法

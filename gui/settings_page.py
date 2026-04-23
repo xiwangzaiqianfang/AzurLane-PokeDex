@@ -54,6 +54,44 @@ class SettingsPage(QWidget):
 
         layout.addWidget(app_card)
 
+        # ---- 账户设置卡片 ----
+        account_card = QFrame()
+        account_card.setObjectName("card")
+        account_layout = QVBoxLayout(account_card)
+        account_layout.setContentsMargins(15, 15, 15, 15)
+        account_layout.setAlignment(Qt.AlignVCenter)
+
+        account_title_layout = QHBoxLayout()
+        self.account_icon_label = QLabel()
+        pixmap = svg_to_pixmap_min("settings", "account", 18)  # 需要准备 account 图标
+        self.account_icon_label.setFixedSize(22, 22)
+        self.account_icon_label.setAlignment(Qt.AlignCenter)
+        self.account_icon_label.setPixmap(pixmap)
+        account_title_layout.addWidget(self.account_icon_label)
+
+        account_title = QLabel("账户设置")
+        account_title.setObjectName("cardTitle")
+        account_title.setAlignment(Qt.AlignVCenter)
+        account_title.setStyleSheet("font-weight: bold; margin: 0; padding: 0;")
+        account_title_layout.setAlignment(Qt.AlignVCenter)
+        account_title_layout.addWidget(account_title)
+        account_title_layout.addStretch()
+        account_layout.addLayout(account_title_layout)
+
+        # 启动时询问账号复选框
+        self.ask_account_cb = QCheckBox("启动时询问账号")
+        self.ask_account_cb.toggled.connect(self.on_ask_account_toggled)
+        account_layout.addWidget(self.ask_account_cb)
+
+        # 默认账号下拉框
+        self.default_account_label = QLabel("默认账号:")
+        self.default_account_combo = QComboBox()
+        self.default_account_combo.setEnabled(False)
+        account_layout.addWidget(self.default_account_label)
+        account_layout.addWidget(self.default_account_combo)
+
+        layout.addWidget(account_card)
+
         # ---- 编辑密码卡片 ----
         pwd_card = QFrame()
         pwd_card.setObjectName("card")
@@ -233,6 +271,8 @@ class SettingsPage(QWidget):
         about_layout.addWidget(self.about_content)
         layout.addWidget(about_card)
 
+        self.load_account_settings()
+
     def change_password(self):
         if self.manager.need_password_for_edit():
             old_pwd, ok = QInputDialog.getText(self, "验证原密码", "请输入当前编辑密码:", QLineEdit.Password)
@@ -283,22 +323,52 @@ class SettingsPage(QWidget):
         if theme is None:
             theme = getattr(self.manager, 'current_theme', 'light')
         # 刷新编辑密码图标
-        if hasattr(self, 'pwd_icon_label'):
+        if hasattr(self, 'self.pwd_icon_label'):
             pixmap = svg_to_pixmap_min("settings", "password", size=18, theme=theme)
             self.pwd_icon_label.setPixmap(pixmap)
+        if hasattr(self, 'self.account_icon_label'):
+            pixmap = svg_to_pixmap_min("settings", "account", size=18, theme=theme)
+            self.pwd_icon_label.setPixmap(pixmap)
         # 刷新窗口设置图标
-        if hasattr(self, 'window_icon_label'):
+        if hasattr(self, 'self.window_icon_label'):
             pixmap = svg_to_pixmap_min("settings", "window", size=18, theme=theme)
             self.window_icon_label.setPixmap(pixmap)
         # 升级图标
-        if hasattr(self, 'update_icon_label'):
+        if hasattr(self, 'self.update_icon_label'):
             pixmap = svg_to_pixmap_min("settings", "update", size=18, theme=theme)
             self.update_icon_label.setPixmap(pixmap)
         # 日志图标
-        if hasattr(self, 'log_icon_label'):
+        if hasattr(self, 'self.log_icon_label'):
             pixmap = svg_to_pixmap_min("settings", "log", size=18, theme=theme)
             self.log_icon_label.setPixmap(pixmap)
         # 关于图标
-        if hasattr(self, 'about_icon_label'):
+        if hasattr(self, 'self.about_icon_label'):
             pixmap = svg_to_pixmap_min("settings", "info", size=18, theme=theme)
             self.about_icon_label.setPixmap(pixmap)
+
+    def load_account_settings(self):
+        ask = self.manager.config.get("ask_account_on_startup", True)
+        self.ask_account_cb.setChecked(ask)
+        self.default_account_combo.setEnabled(not ask)
+        # 填充账户列表（排除系统账户）
+        accounts = self.main_window.account_manager.get_account_list()
+        self.default_account_combo.clear()
+        for acc in accounts:
+            info = self.main_window.account_manager.get_account_info(acc)
+            if not info.get("is_system", False):
+                    self.default_account_combo.addItem(acc)
+        default = self.manager.config.get("default_account", "")
+        idx = self.default_account_combo.findText(default)
+        if idx >= 0:
+            self.default_account_combo.setCurrentIndex(idx)
+
+    def on_ask_account_toggled(self, checked):
+        self.default_account_combo.setEnabled(not checked)
+        self.save_account_settings()
+
+    def save_account_settings(self):
+        self.manager.config["ask_account_on_startup"] = self.ask_account_cb.isChecked()
+        self.manager.config["default_account"] = self.default_account_combo.currentText()
+        self.manager.save_config()
+
+    

@@ -5,9 +5,16 @@ from PySide6.QtGui import QColor, QBrush
 class ShipListWidget(QTableWidget):
     current_ship_changed = Signal(object)   # 发出 Ship 对象
     sort_requested = Signal(str, bool)      # (key, reverse)
+    mark_owned_requested = Signal(int, bool)          # (ship_id, owned)
+    mark_max_breakthrough_requested = Signal(int, bool)  # (ship_id, max)
+    mark_level120_requested = Signal(int, bool)        # (ship_id, level120)
+    mark_oath_requested = Signal(int, bool)            # (ship_id, oath)
+    delete_ship_requested = Signal(int)                # (ship_id) 仅开发模式
 
-    def __init__(self):
+    def __init__(self, dev_mode=False, account_manager=None):
         super().__init__()
+        self.dev_mode = dev_mode
+        self.account_manager = account_manager
         self.setColumnCount(7)
         self.setHorizontalHeaderLabels(["","编号", "名称", "拥有", "突破", "誓约", "120级"])
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -40,6 +47,8 @@ class ShipListWidget(QTableWidget):
         self.current_item_timer = QTimer()
         self.current_item_timer.setSingleShot(True)
         self.current_item_timer.timeout.connect(self._delayed_current_item_changed)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
 
         # 连接 currentItemChanged 而不是 itemSelectionChanged 消除延迟
         self.currentItemChanged.connect(self.on_current_item_changed)
@@ -144,18 +153,38 @@ class ShipListWidget(QTableWidget):
         if 0 <= row < len(self.current_ships):
             return self.current_ships[row]
         return None
-    
-    def contextMenuEvent(self, event):
-        index = self.indexAt(event.pos())
+
+    def show_context_menu(self, pos):
+        index = self.indexAt(pos)
         if not index.isValid():
             return
         row = index.row()
         ship = self.current_ships[row]
         menu = QMenu(self)
+
+        # 标记为已获得/未获得
         action_owned = menu.addAction("标记为已获得" if not ship.owned else "标记为未获得")
-        action_owned.triggered.connect(lambda: self.toggle_owned(ship))
-        # 添加更多动作...
-        menu.exec_(event.globalPos())
+        action_owned.triggered.connect(lambda: self.mark_owned_requested.emit(ship.id, not ship.owned))
+
+        # 标记为已满破/未满破
+        action_max = menu.addAction("标记为已满破" if not ship.is_max_breakthrough() else "标记为未满破")
+        action_max.triggered.connect(lambda: self.mark_max_breakthrough_requested.emit(ship.id, not ship.is_max_breakthrough()))
+
+        # 标记为已120/未120
+        action_120 = menu.addAction("标记为已120" if not ship.level_120 else "标记为未120")
+        action_120.triggered.connect(lambda: self.mark_level120_requested.emit(ship.id, not ship.level_120))
+
+        # 标记为已誓约/未誓约
+        action_oath = menu.addAction("标记为已誓约" if not ship.oath else "标记为未誓约")
+        action_oath.triggered.connect(lambda: self.mark_oath_requested.emit(ship.id, not ship.oath))
+
+        # 删除舰船（仅开发模式）
+        if self.dev_mode and self.account_manager and self.account_manager.is_developer():
+            menu.addSeparator()
+            action_delete = menu.addAction("删除舰船")
+            action_delete.triggered.connect(lambda: self.delete_ship_requested.emit(ship.id))
+
+        menu.exec(self.viewport().mapToGlobal(pos))
 
     def get_checked_ship_ids(self):
         ids = []

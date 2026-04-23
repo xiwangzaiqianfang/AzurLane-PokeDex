@@ -1,13 +1,14 @@
 import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                                 QMessageBox, QApplication, QLabel, QSizePolicy,
-                                QProgressBar,QStackedWidget, QPushButton, QListWidget,
+                                QProgressBar,QStackedWidget, QPushButton, QDialog,
                                 QListWidgetItem, QFrame, QGraphicsOpacityEffect)
 from PySide6.QtCore import (Qt, QSettings, Signal, QUrl, QTimer, QThread, QParallelAnimationGroup,
                             QSize, QPropertyAnimation, QEasingCurve, QPoint)
-from PySide6.QtGui import QPixmap, QDesktopServices, QIcon
+from PySide6.QtGui import QPixmap, QDesktopServices, QIcon, QPainterPath, QPainter
 from gui.navigationlistweidget import NavigationListWidget
 from manager import ShipManager
+from gui.account_manager import AccountManager
 from utils import load_icon, resource_path
 from gui.main_page import MainPage
 #from gui.fleet_tech_page import FleetTechPage
@@ -16,26 +17,36 @@ from gui.attr_bonus_page import AttrBonusPage
 from gui.stats_page import StatPage
 from gui.settings_page import SettingsPage
 from gui.detail_widget import DetailWidget
+from gui.account_manager import AccountManager
 
 class LoaderThread(QThread):
     finished = Signal(object)   # 传递 manager 对象
 
+    def __init__(self, account_manager, dev_mode=False):
+        super().__init__()
+        self.account_manager = account_manager
+        self.dev_mode = dev_mode
+
     def run(self):
-        manager = ShipManager("ships.json")
-        self.finished.emit(manager)
+        manager = ShipManager(self.account_manager, dev_mode=self.dev_mode)
+        self.finished.emit((manager, self.account_manager))
 
 class MainWindow(QMainWindow):
     windowResized = Signal()
 
-    def __init__(self, manager=None):
+    def __init__(self, account_manager, manager=None, dev_mode=False):
+        self.current_theme = "light"
+        self.dev_mode = dev_mode
+        self.account_manager = account_manager if account_manager else AccountManager()
+        self.manager = manager if manager else ShipManager(self.account_manager, dev_mode=dev_mode)
         #print("MainWindow __init__ start")
         super().__init__()
         self.setWindowTitle("碧蓝航线图鉴")
-        self.resize(1400, 700)
+        self.resize(1450, 700)
         self.setMinimumWidth(800)
 
         # 提前创建设置对象
-        self.settings = QSettings("菲梦林光", "AzurLaneDex")
+        self.settings = QSettings("菲梦林光", "AzurLaneDex")    
 
         # 创建 stacked widget 作为中央部件
         self.stacked_widget = QStackedWidget()
@@ -85,9 +96,11 @@ class MainWindow(QMainWindow):
             self.loader_thread.finished.connect(self.on_loading_finished)
             self.loader_thread.start()
             
-    def on_loading_finished(self, manager):
+    def on_loading_finished(self, result):
         """数据加载完成，切换到主界面"""
+        manager, account_manager = result
         self.manager = manager
+        self.account_manager = account_manager
         self.setup_main_ui()
         self.manager.data_changed.connect(self.on_global_data_changed)
         self.stacked_widget.setCurrentWidget(self.main_widget)
@@ -103,6 +116,7 @@ class MainWindow(QMainWindow):
 
         #侧边栏
         nav_container = QWidget()
+        nav_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         nav_layout = QVBoxLayout(nav_container)
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(0)
@@ -146,7 +160,23 @@ class MainWindow(QMainWindow):
         self.indicator.setStyleSheet("border-radius: 2px;")
         self.indicator.hide()  # 初始隐藏，第一次选中时显示
         
-        nav_layout.addWidget(self.nav_list)
+        nav_layout.addWidget(self.nav_list, 1)
+
+        nav_layout.addStretch()
+
+        # 头像显示
+        self.avatar_label = QLabel()
+        self.avatar_label.setFixedSize(40, 40)
+        self.avatar_label.setStyleSheet("border-radius: 20px; background-color: #e0e0e0;")
+        self.avatar_label.setAlignment(Qt.AlignCenter)
+        # 创建水平布局，使头像靠左并添加左边距
+        avatar_container = QWidget()
+        avatar_layout = QHBoxLayout(avatar_container)
+        avatar_layout.setContentsMargins(12, 8, 0, 8)
+        avatar_layout.addWidget(self.avatar_label)
+        avatar_layout.addStretch()
+        nav_layout.addWidget(avatar_container)
+        
         main_layout.addWidget(nav_container, 0, Qt.AlignTop)
 
         #堆叠区域
@@ -156,7 +186,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.stacked, 1)
 
         # 创建页面
-        self.main_page = MainPage(self.manager, self)
+        self.main_page = MainPage(self.manager, self, dev_mode=self.dev_mode)
         self.camp_tech_page = CampTechPage(self.manager,self)
         self.attr_bonus_page = AttrBonusPage(self.manager, self)    
         self.stats_page = StatPage(self.manager, self)
@@ -178,9 +208,9 @@ class MainWindow(QMainWindow):
         if hasattr(app.styleHints(), 'colorScheme'):
             current_scheme = app.styleHints().colorScheme()
             if current_scheme == Qt.ColorScheme.Dark:
-                self.manager.current_theme = "dark"
+                self.current_theme = "dark"
             else:
-                self.manager.current_theme = "light"
+                self.current_theme = "light"
         else:
             # 对于 Qt < 6.5，需要其他方法获取，例如读取注册表
             import winreg
@@ -189,28 +219,29 @@ class MainWindow(QMainWindow):
                                     r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
                 value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
                 winreg.CloseKey(key)
-                self.manager.current_theme = "dark" if value == 0 else "light"
+                self.current_theme = "dark" if value == 0 else "light"
             except:
-                self.manager.current_theme = "light"  # 默认
+                self.current_theme = "light"  # 默认
         self.load_theme()
+        self.update_avatar_display()
         #else:
-        #    self.manager.current_theme = theme_mode
+        #    self.current_theme = theme_mode
         #    self.load_theme()
         self.setup_theme_monitor()
-        self.nav_list.show()
-        nav_container.show()
+        #self.nav_list.show()
+        #nav_container.show()
         #nav_container.setWindowFlags(Qt.Widget)
 
-        print("=== 布局调试 ===")
-        print("main_layout 子控件数量:", main_layout.count())
-        for i in range(main_layout.count()):
-            w = main_layout.itemAt(i).widget()
-            if w:
-                print(f"  子控件 {i}: {w} 宽度={w.width()} 可见={w.isVisible()}")
-        print("nav_container 宽度:", nav_container.width())
-        print("nav_list 宽度:", self.nav_list.width())
-        print("nav_list 可见:", self.nav_list.isVisible())
-        print("nav_list 项目数:", self.nav_list.count())
+        #print("=== 布局调试 ===")
+        #print("main_layout 子控件数量:", main_layout.count())
+        #for i in range(main_layout.count()):
+        #    w = main_layout.itemAt(i).widget()
+        #    if w:
+        #        print(f"  子控件 {i}: {w} 宽度={w.width()} 可见={w.isVisible()}")
+        #print("nav_container 宽度:", nav_container.width())
+        #print("nav_list 宽度:", self.nav_list.width())
+        #print("nav_list 可见:", self.nav_list.isVisible())
+        #print("nav_list 项目数:", self.nav_list.count())
 
     def switch_page(self, row):
         self.switch_page_with_fade(row)
@@ -277,7 +308,7 @@ class MainWindow(QMainWindow):
     def load_theme(self):
         """加载保存的主题，并将样式表应用到整个应用"""
         #theme = self.settings.value("theme", "light")  # 默认浅色
-        theme = self.manager.current_theme
+        theme = self.current_theme
         #print(f"应用主题: {theme}")
         style_file = f"style_{theme}.qss"
         # 获取当前文件所在目录的绝对路径
@@ -374,12 +405,12 @@ class MainWindow(QMainWindow):
         self.load_theme()
         self.update_indicator_color()
         new_theme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
-        if new_theme != self.manager.current_theme:
+        if new_theme != self.current_theme:
             #print(f"[主题] 系统主题变化，新主题: {new_theme}")
-            #self.manager.current_theme = new_theme
+            #self.current_theme = new_theme
             #self.load_theme()
             return
-        self.manager.current_theme = new_theme
+        self.current_theme = new_theme
         load_icon.current_theme = new_theme # 更新全局主题
         # 重新加载侧边栏图标（正常状态，因为选中状态会随后自动更新）
         for item, cat, name in self.nav_items:
@@ -405,18 +436,18 @@ class MainWindow(QMainWindow):
     #        if hasattr(app.styleHints(), 'colorScheme'):
     #            current_scheme = app.styleHints().colorScheme()
     #            new_theme = "dark" if current_scheme == Qt.ColorScheme.Dark else "light"
-    #            self.manager.current_theme = new_theme
+    #            self.current_theme = new_theme
     #            self.load_theme()
     #        else:
     #            # 低版本 Qt 可读取注册表等
     #            # 这里简单默认浅色
-    #            self.manager.current_theme = "light"
+    #            self.current_theme = "light"
     #            self.load_theme()
 
     #def set_manual_theme(self, theme):
     #    print(f"[主题] 手动设置主题为: {theme}")
     #    self.system_follow = False
-    #    self.manager.current_theme = theme
+    #    self.current_theme = theme
     #    self.load_theme()
 
     def open_settings(self):
@@ -428,7 +459,7 @@ class MainWindow(QMainWindow):
         """清除保存的窗口几何信息，并重置当前窗口到默认大小"""
         # 删除保存的几何信息
         self.settings.remove("window_geometry")
-        self.resize(1400, 700)
+        self.resize(1450, 700)
         # 将窗口移动到屏幕中央
         screen = QApplication.primaryScreen().geometry()
         self.move(screen.center() - self.rect().center())
@@ -470,7 +501,7 @@ class MainWindow(QMainWindow):
 
     def update_indicator_color(self):
         """根据当前主题设置指示条颜色"""
-        theme = self.manager.current_theme
+        theme = self.current_theme
         if theme == "light":
             color = "#0078d4"   # WinUI 蓝色
         else:
@@ -543,7 +574,7 @@ class MainWindow(QMainWindow):
             default_url = "https://raw.githubusercontent.com/xiwangzaiqianfang/AzurLane-Dex/main/ships.json"
             success = self.manager.update_from_github(default_url)
             if success:
-                self.apply_filter(self.filter_bar.get_criteria())
+                self.main_page.apply_filter(self.main_page.filter_bar.get_current_criteria())
                 QMessageBox.information(self, "完成", "数据更新成功！")
             else:
                 QMessageBox.information(self, "无需更新", "数据已是最新版本。")
@@ -562,9 +593,10 @@ class MainWindow(QMainWindow):
             self.stats_page.load_stats()
         # 主页面本身会通过详情页信号更新，无需重复刷新
 
-    def refresh_icons(self, svg_to_pixmap_min, svg_to_pixmap_max):
+    def refresh_icons(self):
         """刷新所有依赖主题的图标（侧边栏、卡片标题、设置页等）"""
-        theme = self.manager.current_theme
+        from utils import svg_to_pixmap_min, svg_to_pixmap_max
+        theme = self.current_theme
         # 更新全局主题变量（确保 svg_to_pixmap 函数使用正确的主题）
         svg_to_pixmap_min.current_theme = theme
         svg_to_pixmap_max.current_theme = theme
@@ -584,3 +616,141 @@ class MainWindow(QMainWindow):
         # 3. 刷新设置页面图标（如果已创建）
         if hasattr(self, 'settings_page'):
             self.settings_page.refresh_icons(theme)
+
+    def switch_account(self):
+        """切换账户（弹出对话框）"""
+        from gui.account_dialog import AccountDialog
+        dlg = AccountDialog(self.account_manager, self)
+        if dlg.exec() == QDialog.Accepted:
+            new_account = self.account_manager.get_current_account()
+            self.manager.switch_account(new_account)
+            # 刷新所有页面
+            self.update_avatar_display()
+            self.main_page.apply_filter(self.main_page.filter_bar.get_current_criteria())
+            self.camp_tech_page.load_data()
+            self.attr_bonus_page.load_data()
+            self.stats_page.load_stats()
+            QMessageBox.information(self, "成功", f"已切换到账户 {new_account}")
+
+    def export_user_state(self):
+        """导出当前账户的用户状态"""
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(self, "导出用户状态", "ships_state.json", "JSON (*.json)")
+        if path:
+            try:
+                self.manager.export_user_state(path)
+                QMessageBox.information(self, "成功", "用户状态已导出")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导出失败：{e}")
+
+    def import_user_state_overwrite(self):
+        """导入用户状态并覆盖当前账户"""
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(self, "导入用户状态", "", "JSON (*.json)")
+        if not path:
+            return
+        reply = QMessageBox.question(self, "确认", "导入将覆盖当前账户的所有数据，是否继续？",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.No:
+            return
+        try:
+            self.manager.import_user_state(path, as_new_account=False)
+            self.main_page.apply_filter(self.main_page.filter_bar.get_current_criteria())
+            self.camp_tech_page.load_data()
+            self.attr_bonus_page.load_data()
+            self.stats_page.load_stats()
+            QMessageBox.information(self, "成功", "数据已导入，当前账户已更新")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
+
+    def import_user_state_new(self):
+        """导入用户状态并创建新账户"""
+        from PySide6.QtWidgets import QFileDialog, QInputDialog
+        path, _ = QFileDialog.getOpenFileName(self, "导入用户状态", "", "JSON (*.json)")
+        if not path:
+            return
+        name, ok = QInputDialog.getText(self, "新账户名", "请输入新账户名称:")
+        if not ok or not name:
+            return
+        try:
+            self.manager.import_user_state(path, as_new_account=True, new_account_name=name)
+            self.main_page.apply_filter(self.main_page.filter_bar.get_current_criteria())
+            self.camp_tech_page.load_data()
+            self.attr_bonus_page.load_data()
+            self.stats_page.load_stats()
+            QMessageBox.information(self, "成功", f"已创建账户 {name} 并导入数据，已自动切换")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
+
+    def export_static_data(self):
+        """导出静态数据（仅开发者）"""
+        if not self.dev_mode or not self.account_manager.is_developer():
+            QMessageBox.warning(self, "权限不足", "只有开发者模式下的开发者账户才能导出静态数据")
+            return
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(self, "导出静态数据", "ships_static.json", "JSON (*.json)")
+        if path:
+            try:
+                self.manager.export_static(path)
+                QMessageBox.information(self, "成功", "静态数据已导出")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导出失败：{e}")
+
+    def import_static_data(self):
+        """导入静态数据（仅开发者）"""
+        if not self.dev_mode or not self.account_manager.is_developer():
+            QMessageBox.warning(self, "权限不足", "只有开发者模式下的开发者账户才能导入静态数据")
+            return
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(self, "导入静态数据", "", "JSON (*.json)")
+        if not path:
+            return
+        reply = QMessageBox.question(self, "确认", "导入静态数据将覆盖现有数据，是否继续？",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.No:
+            return
+        try:
+            self.manager.import_static(path)
+            self.main_page.apply_filter(self.main_page.filter_bar.get_current_criteria())
+            self.camp_tech_page.load_data()
+            self.attr_bonus_page.load_data()
+            self.stats_page.load_stats()
+            QMessageBox.information(self, "成功", "静态数据已导入")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败：{e}")
+        
+    def update_avatar_display(self):
+        current = self.account_manager.get_current_account()
+        acc = self.account_manager.get_account_info(current)
+        avatar_path = None
+        if acc and acc.get("avatar") and os.path.exists(acc["avatar"]):
+            avatar_path = acc["avatar"]
+        else:
+            default_avatar = resource_path("assets/user/default_avatar.png")
+            if os.path.exists(default_avatar):
+                avatar_path = default_avatar
+        if avatar_path:
+            pixmap = QPixmap(avatar_path)
+            if not pixmap.isNull():
+                pixmap = self.round_pixmap(pixmap, 40)
+                self.avatar_label.setPixmap(pixmap)
+            else:
+                self._set_avatar_placeholder()
+        else:
+            self.avatar_label.clear()
+            self.avatar_label.setText("👤")
+            self.avatar_label.setStyleSheet("font-size: 30px;")
+    
+    def round_pixmap(self, pixmap, size):
+        """将 QPixmap 裁剪为圆形并缩放到指定尺寸"""
+        target = QPixmap(size, size)
+        target.fill(Qt.transparent)
+        painter = QPainter(target)
+        painter.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addEllipse(0, 0, size, size)
+        painter.setClipPath(path)
+        scaled = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        painter.drawPixmap(0, 0, scaled)
+        painter.end()
+        return target

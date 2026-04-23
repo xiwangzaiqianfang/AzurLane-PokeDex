@@ -6,14 +6,18 @@ from gui.filter_bar import FilterBar
 from gui.ship_list_widget import ShipListWidget
 from gui.detail_widget import DetailWidget
 from gui.add_ship_dialog import AddShipDialog
+from manager import ShipManager
 
 class MainPage(QWidget):
-    def __init__(self, manager, main_window):
+    def __init__(self, manager, main_window, dev_mode=False):
         super().__init__()
+        self.dev_mode = dev_mode
         self.manager = manager
         self.main_window = main_window
         self.current_sort_key = "id"
         self.current_sort_reverse = False
+        self.account_manager = getattr(main_window, 'account_manager', None)
+        self.filter_bar = FilterBar(dev_mode=self.dev_mode, account_manager=self.account_manager)
         self.setup_ui()
         self.setup_signals()
         self.apply_initial_data()
@@ -24,12 +28,13 @@ class MainPage(QWidget):
         layout.setContentsMargins(0,0,0,0)
 
         # 顶部工具栏布局（包含筛选栏和主题切换按钮）
-        self.filter_bar = FilterBar()
+        #self.filter_bar = FilterBar()
         #self.filter_bar.fleet_tech_clicked.connect(self.main_window.show_camp_tech)
         #self.filter_bar.attr_bonus_clicked.connect(self.main_window.show_attr_bonus)
         #self.filter_bar.theme_toggled.connect(self.main_window.toggle_theme)
         layout.addWidget(self.filter_bar)
 
+        # 测试版本信息栏
         self.info_bar = QFrame()
         self.info_bar.setObjectName("infoBar")
         self.info_bar.setVisible(False)
@@ -56,12 +61,15 @@ class MainPage(QWidget):
         self.splitter.setChildrenCollapsible(False)
         layout.addWidget(self.splitter, 1)  # 拉伸因子1
 
-        self.ship_list = ShipListWidget()
+        self.ship_list = ShipListWidget(dev_mode=self.dev_mode, account_manager=self.main_window.account_manager)
         self.splitter.addWidget(self.ship_list)
 
         # 右侧详情
-        self.detail_widget = DetailWidget()
+        self.detail_widget = DetailWidget(dev_mode=self.dev_mode, account_manager=self.main_window.account_manager)
         self.detail_widget.main_window = self.main_window
+        self.detail_widget.manager = self.manager
+        self.detail_widget.dev_mode = self.dev_mode
+        self.detail_widget.account_manager = self.main_window.account_manager
         self.splitter.addWidget(self.detail_widget)
 
         self.splitter.setSizes([450, 850])
@@ -72,13 +80,14 @@ class MainPage(QWidget):
         self.check_and_show_test_version_info()
 
     def setup_signals(self):
+        self.manager.data_changed.connect(self.on_global_data_changed)
         self.filter_bar.filter_changed.connect(self.apply_filter)
         self.filter_bar.reset_clicked.connect(self.reset_filter)
-        #self.filter_bar.stat_clicked.connect(self.show_stat_dialog)
         self.filter_bar.add_ship_clicked.connect(self.show_add_ship_dialog)
-        self.filter_bar.switch_file_clicked.connect(self.switch_file)
-        self.filter_bar.export_clicked.connect(self.export_data)
-        self.filter_bar.import_clicked.connect(self.import_data)
+        self.filter_bar.switch_account_clicked.connect(self.main_window.switch_account)
+        self.filter_bar.export_user_state_clicked.connect(self.main_window.import_user_state_overwrite)
+        self.filter_bar.import_user_state_overwrite_clicked.connect(self.main_window.import_user_state_overwrite)
+        self.filter_bar.import_user_state_new_clicked.connect(self.main_window.import_user_state_new)
         #self.filter_bar.update_online_clicked.connect(self.update_online)
         self.filter_bar.sort_order_changed.connect(self.on_sort_order_changed)
         self.filter_bar.batch_operation_signal.connect(self.batch_operation)
@@ -88,6 +97,11 @@ class MainPage(QWidget):
 
         self.ship_list.current_ship_changed.connect(self.on_ship_selected)
         self.ship_list.sort_requested.connect(self.on_sort_requested)
+        self.ship_list.mark_owned_requested.connect(self.mark_owned)
+        self.ship_list.mark_max_breakthrough_requested.connect(self.mark_max_breakthrough)
+        self.ship_list.mark_level120_requested.connect(self.mark_level120)
+        self.ship_list.mark_oath_requested.connect(self.mark_oath)
+        self.ship_list.delete_ship_requested.connect(self.delete_ship)
         self.detail_widget.data_changed.connect(self.on_ship_updated)
 
     def apply_initial_data(self):
@@ -342,3 +356,58 @@ class MainPage(QWidget):
             self.info_bar.setVisible(True)
         else:
             self.info_bar.setVisible(False)
+
+    def on_global_data_changed(self):
+        self.apply_filter(self.filter_bar.get_current_criteria())
+
+    def mark_owned(self, ship_id, owned):
+        for ship in self.manager.ships:
+            if ship.id == ship_id:
+                ship.owned = owned
+                if not owned:
+                    # 取消拥有时同时清空其他状态
+                    ship.breakthrough = 0
+                    ship.oath = False
+                    ship.level_120 = False
+                    ship.remodeled = False
+                    ship.special_gear_obtained = False
+                break
+        self.manager.save()
+        self.apply_filter(self.filter_bar.get_current_criteria())
+
+    def mark_max_breakthrough(self, ship_id, max_bt):
+        for ship in self.manager.ships:
+            if ship.id == ship_id:
+                ship.breakthrough = 3 if max_bt else 0
+                break
+        self.manager.save()
+        self.apply_filter(self.filter_bar.get_current_criteria())
+
+    def mark_level120(self, ship_id, level120):
+        for ship in self.manager.ships:
+            if ship.id == ship_id:
+                ship.level_120 = level120
+                break
+        self.manager.save()
+        self.apply_filter(self.filter_bar.get_current_criteria())
+
+    def mark_oath(self, ship_id, oath):
+        for ship in self.manager.ships:
+            if ship.id == ship_id:
+                ship.oath = oath
+                break
+        self.manager.save()
+        self.apply_filter(self.filter_bar.get_current_criteria())
+
+    def delete_ship(self, ship_id):
+        # 仅开发模式且为开发者账户才允许删除
+        if not self.dev_mode or not self.account_manager.is_developer():
+            return
+        reply = QMessageBox.question(self, "确认删除", f"确定要删除舰船 ID {ship_id} 吗？此操作不可恢复！",
+                                    QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.manager.ships = [s for s in self.manager.ships if s.id != ship_id]
+            self.manager._save_static()   # 保存静态数据
+            self.manager.save()            # 保存用户状态
+            self.apply_filter(self.filter_bar.get_current_criteria())
+            QMessageBox.information(self, "完成", "舰船已删除")

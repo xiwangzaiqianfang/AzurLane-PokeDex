@@ -3,9 +3,11 @@ import dataclasses
 import hashlib
 import json
 import os
+import sys
 import certifi
 import datetime
 import copy
+import shutil
 from models import Ship
 from typing import Optional
 from dataclasses import asdict
@@ -23,17 +25,42 @@ def hash_password(password: str) -> str:
 class ShipManager(QObject):
     data_changed = Signal()
     REQUIRED_FIELDS = set(Ship.__dataclass_fields__.keys())
+    USER_STATE_FIELDS = {
+        'owned', 'breakthrough', 'remodeled', 'oath', 'level_120', 
+        'special_gear_obtained'
+    }
 
-    def __init__(self, filepath="ships.json"):
+    def __init__(self, account_manager, dev_mode=False):
         super().__init__()
-        self.filepath = filepath
+        self.account_manager = account_manager
+        self.dev_mode = dev_mode
+        # 确定用户数据根目录（可执行文件所在目录）
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.abspath(".")
+        self.data_dir = os.path.join(base_dir, "data")
+        self.static_dir = os.path.join(self.data_dir, "static")
+        self.user_dir = os.path.join(self.data_dir, "users")
+        self.log_dir = os.path.join(self.data_dir, "log")
+        # 静态数据文件路径
+        self.static_path = os.path.join(self.static_dir, "ships_static.json")
+        os.makedirs(self.static_dir, exist_ok=True)
+        os.makedirs(self.user_dir, exist_ok=True)
+        os.makedirs(self.log_dir, exist_ok=True)
+        # 用户状态文件路径（动态）
+        current_user = account_manager.get_current_account()
+        if current_user:
+            self.state_path = os.path.join(self.user_dir, current_user, "ships_state.json")
+        else:
+            self.state_path = None
         self.config_file = "config.json"
         self.config = self.load_config()
-        self.version = "0.9.5"
-        self.ships: list[Ship] = []
+        self.version = "0.0"
+        self.ships = []
         #theme_mode = self.config.get("theme_mode", "system")
         #if theme_mode == "system":
-        #    self.current_theme = "light"
+        #self.current_theme = "light"
         #elif self.current_theme == "light":
         #   self.current_theme = "light"
         #elif self.current_theme == "dark":
@@ -45,115 +72,55 @@ class ShipManager(QObject):
 
     def load(self):
         """加载 JSON，若不存在则创建示例数据"""
-        if not os.path.exists(self.filepath):
-            self._create_sample_data()
-            return
-
-        try:
-            with open(self.filepath, 'r', encoding='utf-8') as f:
-                raw_data = json.load(f)
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON 文件损坏: {e}")
-
-        print(f"[DEBUG] 原始数据类型: {type(raw_data)}")
-        if isinstance(raw_data, dict):
-            print(f"[DEBUG] 字典键: {list(raw_data.keys())}")
-
-            # 兼容旧版本：如果 data 是列表，则包装成新格式
-            if isinstance(raw_data, dict) and "version" in raw_data and "ships" in raw_data:
-                self.version = raw_data.get("version", "0.0")
-                ships_data = raw_data["ships"]
-                print(f"[DEBUG] 新版格式，version={self.version}, ships_data 类型={type(ships_data)}")
-            elif isinstance(raw_data, list):
-                # 旧版格式：直接是数组
-                self.version = "0.0"
-                ships_data = raw_data
-                print(f"[DEBUG] 旧版格式，直接数组，长度={len(ships_data)}")
+        if os.path.exists("ships.json") and not os.path.exists(self.static_path):
+            self._migrate_old_data()
+            current_user = self.account_manager.get_current_account()
+            if current_user:
+                self.state_path = os.path.join(self.user_dir, current_user, "ships_state.json")
             else:
-                # 未知格式，尝试补救
-                print("[ERROR] 无法识别的数据格式，将重置为空")
-                self.version = "0.0"
-                ships_data = []
-
-        # 确保 ships_data 是列表
-        if not isinstance(ships_data, list):
-            ships_data = []  # 如果意外不是列表，重置为空
-
-        ship_fields = set(Ship.__dataclass_fields__.keys())
-        migrated = []
-
-        for item in ships_data:
-            # 旧数据迁移：如果存在旧式单字段科技点，将其转换为三阶段字段
-            #self._migrate_old_tech_fields(item)
-            if not isinstance(item, dict):
-                print(f"警告: 遇到非字典数据，已跳过: {item}")
-                continue
-                
-            # 补全所有缺失字段
-            for field in ship_fields:
-                if field not in item:
-                    default_val = Ship.__dataclass_fields__[field].default
-                    if default_val is dataclasses._MISSING_TYPE:
-                        # 必需字段缺失，根据类型设置合理的默认值
-                        field_type = Ship.__dataclass_fields__[field].type
-                        if field_type == int:
-                            item[field] = 0          # 例如 id 默认 0
-                        elif field_type == str:
-                            item[field] = ""          # 名称等默认空字符串
-                        elif field_type == bool:
-                            item[field] = False
-                        elif field_type == list:
-                            item[field] = []           # drop_locations 等列表
-                        else:
-                            item[field] = None
+                self.state_path = None
+                # 尝试从打包资源中复制默认静态文件
+                default_static = resource_path("data/static/ships_static.json")
+                if os.path.exists(default_static):
+                    os.makedirs(os.path.dirname(self.static_path), exist_ok=True)
+                    shutil.copy2(default_static, self.static_path)
+                    print(f"已复制默认静态数据到 {self.static_path}")
+                else:
+                    # 如果没有默认静态文件，则创建示例（开发模式）
+                    if self.dev_mode:
+                        self._create_sample_static()
                     else:
-                        item[field] = default_val  
+                        raise FileNotFoundError("缺少静态数据文件")
 
-            # 处理 drop_locations 字符串转列表
-            if isinstance(item.get('drop_locations'), str):
-                item['drop_locations'] = item['drop_locations'].split(';') if item['drop_locations'] else []
+        with open(self.static_path, 'r', encoding='utf-8') as f:
+            static_data = json.load(f)
+        self.version = static_data.get("version", "0.0")
+        static_ships = static_data.get("ships", [])
+        
+        # 2. 加载用户状态
+        state_dict = {}
+        if os.path.exists(self.state_path):
+            with open(self.state_path, 'r', encoding='utf-8') as f:
+                state_data = json.load(f)
+            state_dict = {item['id']: item for item in state_data.get('states', [])}
 
-            # 仅保留合法字段
-            filtered_item = {k: v for k, v in item.items() if k in ship_fields}
-            migrated.append(filtered_item)
-
-
-        # 转换为 Ship 对象
-        self.ships = [Ship.from_dict(item) for item in migrated]
-        print(f"[INFO] 成功加载 {len(self.ships)} 条舰船，版本 {self.version}")
-        #self.version = version   # 可以在类中保存版本号
+         # 3. 合并
+        self.ships = []
+        for static in static_ships:
+            ship_id = static['id']
+            state = state_dict.get(ship_id, {})
+            merged = {**static, **state}
+            ship = Ship.from_dict(merged)
+            self.ships.append(ship)
+        
+        # 清理无效改造日期
         for ship in self.ships:
-        # 修复布尔字段
-            for field_name, field_info in Ship.__dataclass_fields__.items():
-                value = getattr(ship, field_name)
-                field_type = field_info.type
-    
-                # 修复布尔字段
-                if field_type == bool and isinstance(value, str):
-                    setattr(ship, field_name, value.lower() == 'true')
-                # 修复整数字段
-                elif field_type == int and isinstance(value, str):
-                    try:
-                        setattr(ship, field_name, int(value))
-                    except:
-                        setattr(ship, field_name, 0)
-                # 修复列表字段（可选）
-                elif field_type == list and isinstance(value, str):
-                    # 如果字符串是 JSON 数组格式，解析它
-                    if value.startswith('[') and value.endswith(']'):
-                        try:
-                            setattr(ship, field_name, json.loads(value))
-                        except:
-                            setattr(ship, field_name, [])
-                    else:
-                        setattr(ship, field_name, [])
-                elif field_type == str and not isinstance(value, str):
-                    setattr(ship, field_name, str(value) if value is not None else "")
+            if not ship.can_remodel and ship.remodel_date:
+                ship.remodel_date = ""
+                print(f"清理不可改造舰船 {ship.name} 的改造日期")
+
         self._auto_assign_game_order()
-            
-        #如果检测到旧格式，立即保存为新格式（可选）
-        if isinstance(raw_data, list):
-            self.save()   # 这会以新格式保存
+        print(f"[INFO] 成功加载 {len(self.ships)} 条舰船，版本 {self.version}")
                     
     def load_config(self):
         if os.path.exists(self.config_file):
@@ -200,7 +167,9 @@ class ShipManager(QObject):
         """记录修改日志"""
         if not self.config.get("log_edits", True):
             return
-        log_file = "edit_log.json"
+        log_dir = "data/log"
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "edit_log.json")
         entry = {
             "timestamp": datetime.datetime.now().isoformat(),
             "ship_id": ship_id,
@@ -235,93 +204,93 @@ class ShipManager(QObject):
 
     def save(self):
         """保存到 JSON，包含版本号，使用原子写入防止文件损坏"""
-        # 检查 self.ships 是否全部是 Ship 对象
-        for i, s in enumerate(self.ships):
-            d = s.to_dict()
-            for k, v in d.items():
-                if hasattr(v, '__class__') and v.__class__.__name__ == '_MISSING_TYPE':
-                    print(f"发现 _MISSING_TYPE 在 ship[{i}], 字段 {k}, 值 {v}")
-                    # 可以在这里将该字段设为默认值，避免崩溃
-                    # d[k] = 0  # 或根据类型设置
-                    # 但更好的是在数据源头修复
-            if not isinstance(s, Ship):
-                print(f"错误: ships[{i}] 不是 Ship 对象: {s}")
-                # 这里可以选择抛出异常或尝试修复
-                raise TypeError(f"ships[{i}] 不是 Ship 对象")
-    
-        data_to_save = {
-            "version": self.version,
-            "ships": [s.to_dict() for s in self.ships]
-        }
-    
-        # 先写入临时文件，再替换原文件
-        temp_file = self.filepath + ".tmp"
-        try:
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(data_to_save, f, ensure_ascii=False, indent=2)
-            os.replace(temp_file, self.filepath)
-            self.data_changed.emit()
-            print(f"[保存成功] {self.filepath} 版本 {self.version}，舰船数 {len(self.ships)}")
-        except Exception as e:
-            print(f"[保存失败] {e}")
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            raise
-
+        state_list = []
+        for ship in self.ships:
+            state_item = {
+                "id": ship.id,
+                "owned": ship.owned,
+                "breakthrough": ship.breakthrough,
+                "remodeled": ship.remodeled,
+                "oath": ship.oath,
+                "level_120": ship.level_120,
+                "special_gear_obtained": ship.special_gear_obtained,
+            }
+            state_list.append(state_item)
+        os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+        with open(self.state_path, 'w', encoding='utf-8') as f:
+            json.dump({"states": state_list}, f, indent=2, ensure_ascii=False)
         self.data_changed.emit()
+        print(f"[保存成功] 用户状态已保存至 {self.state_path}")
 
-
-    def _create_sample_data(self):
-        sample = [
-            Ship(
-                id=1, name="泛用型布里", faction="其他", ship_class="驱逐", rarity="精锐",
-                owned=False, breakthrough=0, oath=False, level_120=False, acquire_main="兑换、赠送", acquire_detail="日/周常任务、月度签到、活动任务、商店兑换、主线普通关卡三星奖励、新兵训练、礼包购买", shop_exchange="勋章、演习", release_date="2017年05月25日", notes="无法建造",
-                tech_durability_obtain=0, tech_durability_max=0, tech_durability_120=0,
-                tech_firepower_obtain=0, tech_firepower_max=0, tech_firepower_120=0,
-                tech_torpedo_obtain=0, tech_torpedo_max=0, tech_torpedo_120=0,
-                tech_aa_obtain=0, tech_aa_max=0, tech_aa_120=0,
-                tech_aviation_obtain=0, tech_aviation_max=0, tech_aviation_120=0,
-                tech_accuracy_obtain=0, tech_accuracy_max=0, tech_accuracy_120=0,
-                tech_reload_obtain=0, tech_reload_max=0, tech_reload_120=0,
-                tech_mobility_obtain=0, tech_mobility_max=0, tech_mobility_120=0,
-                tech_antisub_obtain=0, tech_antisub_max=0, tech_antisub_120=0,
-                bonus_obtain=[], bonus_120=[], tech_affects=["驱逐"],
-                image_path="images/bulin.png"
-            ),
-            Ship(
-                id=2, name="试作型布里MKII", faction="其他", ship_class="驱逐", rarity="超稀有",
-                owned=False, breakthrough=0, oath=False, level_120=False, acquire_main="兑换、赠送", acquire_detail="日/周常任务、月度签到、活动任务、商店兑换、主线普通关卡三星奖励、新兵训练、礼包购买", shop_exchange="勋章、演习", release_date="2017年05月25日", notes="无法建造",
-                tech_durability_obtain=0, tech_durability_max=0, tech_durability_120=0,
-                tech_firepower_obtain=0, tech_firepower_max=0, tech_firepower_120=0,
-                tech_torpedo_obtain=0, tech_torpedo_max=0, tech_torpedo_120=0,
-                tech_aa_obtain=0, tech_aa_max=0, tech_aa_120=0,
-                tech_aviation_obtain=0, tech_aviation_max=0, tech_aviation_120=0,
-                tech_accuracy_obtain=0, tech_accuracy_max=0, tech_accuracy_120=0,
-                tech_reload_obtain=0, tech_reload_max=0, tech_reload_120=0,
-                tech_mobility_obtain=0, tech_mobility_max=0, tech_mobility_120=0,
-                tech_antisub_obtain=0, tech_antisub_max=0, tech_antisub_120=0,
-                bonus_obtain=[], bonus_120=[], tech_affects=["驱逐"],
-                image_path="images/trial_bulin_mkii.png"
-            ),
-            Ship(
-                id=3, name="特装型布里MKIII", faction="其他", ship_class="驱逐", rarity="海上传奇",
-                owned=False, breakthrough=0, oath=False, level_120=False, acquire_main="兑换、赠送", acquire_detail="世界巡游赠送、带有UR的大型EX活动累计PT获取、布里支援计划、商店兑换", shop_exchange="原型商店", debut_event="蝶海梦花", release_date="2020年09月17日", notes="无法建造",
-                tech_durability_obtain=0, tech_durability_max=0, tech_durability_120=0,
-                tech_firepower_obtain=0, tech_firepower_max=0, tech_firepower_120=0,
-                tech_torpedo_obtain=0, tech_torpedo_max=0, tech_torpedo_120=0,
-                tech_aa_obtain=0, tech_aa_max=0, tech_aa_120=0,
-                tech_aviation_obtain=0, tech_aviation_max=0, tech_aviation_120=0,
-                tech_accuracy_obtain=0, tech_accuracy_max=0, tech_accuracy_120=0,
-                tech_reload_obtain=0, tech_reload_max=0, tech_reload_120=0,
-                tech_mobility_obtain=0, tech_mobility_max=0, tech_mobility_120=0,
-                tech_antisub_obtain=0, tech_antisub_max=0, tech_antisub_120=0,
-                bonus_obtain=[], bonus_120=[], tech_affects=["驱逐"],
-                image_path="images/specialized_bulin_mkiii.png"
-            )
+    def _create_sample_static(self):
+        """生成示例静态数据（仅开发模式）"""
+            # 示例船只（只包含静态字段）
+        sample_ships = [
+            {
+                "id": 1,
+                "name": "泛用型布里",
+                "faction": "其他",
+                "ship_class": "驱逐",
+                "rarity": "精锐",
+                "game_order": 1,
+                "can_remodel": False,
+                "remodel_date": "",
+                "acquire_main": "兑换、赠送",
+                "acquire_detail": "日/周常任务、月度签到、活动任务、商店兑换、主线普通关卡三星奖励、新兵训练、礼包购买",
+                "build_time": "",
+                "drop_locations": [],
+                "shop_exchange": "勋章、演习",
+                "is_permanent": True,
+                "debut_event": "",
+                "release_date": "2017-05-25",
+                "notes": "无法建造",
+                "tech_points_obtain": 0,
+                "tech_points_max": 0,
+                "tech_points_120": 0,
+                "tech_durability_obtain": 0,
+                "tech_durability_max": 0,
+                "tech_durability_120": 0,
+                "tech_firepower_obtain": 0,
+                "tech_firepower_max": 0,
+                "tech_firepower_120": 0,
+                "tech_torpedo_obtain": 0,
+                "tech_torpedo_max": 0,
+                "tech_torpedo_120": 0,
+                "tech_aa_obtain": 0,
+                "tech_aa_max": 0,
+                "tech_aa_120": 0,
+                "tech_aviation_obtain": 0,
+                "tech_aviation_max": 0,
+                "tech_aviation_120": 0,
+                "tech_accuracy_obtain": 0,
+                "tech_accuracy_max": 0,
+                "tech_accuracy_120": 0,
+                "tech_reload_obtain": 0,
+                "tech_reload_max": 0,
+                "tech_reload_120": 0,
+                "tech_mobility_obtain": 0,
+                "tech_mobility_max": 0,
+                "tech_mobility_120": 0,
+                "tech_antisub_obtain": 0,
+                "tech_antisub_max": 0,
+                "tech_antisub_120": 0,
+                "special_gear_name": "",
+                "special_gear_date": "",
+                "special_gear_acquire": "",
+                "can_special_gear": False,
+                "image_path": "images/bulin.png"
+            }   
         ]
-        self.ships = sample
-        self.version = "0.1"
-        self.save()
+        static_data = {
+            "version": "0.1",
+            "ships": sample_ships
+        }
+        os.makedirs(os.path.dirname(self.static_path), exist_ok=True)
+        with open(self.static_path, 'w', encoding='utf-8') as f:
+            json.dump(static_data, f, indent=2)
+        print(f"已创建示例静态数据文件: {self.static_path}")
+        # self._save_static()
+        # self.save()
 
     def filter(self, criteria: dict) -> list[Ship]:
         result = self.ships[:]
@@ -664,6 +633,8 @@ class ShipManager(QObject):
         }
     
     def add_ship(self, ship: Ship):
+        if not self.dev_mode or not self.account_manager.is_developer():
+            raise PermissionError("只有开发者模式下的开发者账户才能新增舰船")
         existing_ids = {s.id for s in self.ships}
         # 处理 game_order
         if ship.game_order != 0:
@@ -716,9 +687,15 @@ class ShipManager(QObject):
                 # 可选：通过信号或返回值通知用户
             # 如果未冲突，直接使用 ship.id
 
+        if not ship.can_remodel:
+            ship.remodel_date = ""
+
         self.ships.append(ship)
         self.ships.sort(key=lambda s: s.game_order)
-        self.save()
+        #self.save()
+        self._bump_version()
+        self._save_static()
+        self.data_changed.emit()
         #print(f"保存的 can_special_gear: {ship.can_special_gear}")
         print(f"已添加舰船 ID={ship.id}, 当前总数为 {len(self.ships)}")
         return ship.id
@@ -731,6 +708,8 @@ class ShipManager(QObject):
         :param new_ship: 新的 Ship 对象（应包含更新后的所有字段）
         :return: 是否成功
         """
+        if not self.dev_mode or not self.account_manager.is_developer():
+            raise PermissionError("只有开发者模式下的开发者账户才能编辑静态数据")
         # 1. 处理 ID 变更
         new_ship = copy.deepcopy(new_ship)
         #print(f"[1] 传入 new_ship 的 special_gear_name: {new_ship.special_gear_name}")
@@ -804,6 +783,9 @@ class ShipManager(QObject):
                         s.game_order += 1
             else:
                 return False  # 用户取消更新
+            
+        if not new_ship.can_remodel:
+            new_ship.remodel_date = ""
 
         # 替换列表中的对象
         #print(f"[4] 处理 game_order 冲突后，new_ship 的 special_gear_name: {new_ship.special_gear_name}")
@@ -811,14 +793,67 @@ class ShipManager(QObject):
         self.ships.sort(key=lambda s: s.game_order)
         #print(f"[5] 排序后，temp 的 special_gear_name: {temp.special_gear_name}")
         #print(f"[5] 排序后，列表中 ID {new_ship.id} 的船的 special_gear_name: {next(s for s in self.ships if s.id == new_ship.id).special_gear_name}")
-        self.save()
+        self._bump_version()
+        self._save_static()
+        self.data_changed.emit()
+        #self.save()
         updated = next((s for s in self.ships if s.id == new_ship.id), None)
         print(f"更新后，列表中 ID {new_ship.id} 的对象: {updated}")
         return True
+    
+    def _bump_version(self):
+        """增加版本号（次版本号+1，超过99则主版本号+1，次版本号归零）"""
+        try:
+            major, minor = map(int, self.version.split('.'))
+        except:
+            major, minor = 0, 1
+        minor += 1
+        if minor >= 100:
+            major += 1
+            minor = 0
+        self.version = f"{major}.{minor}"
+        print(f"[版本] 数据版本已更新至 {self.version}")
+        # 注意：这里不保存，由调用者保存静态数据
 
-    def switch_file(self, new_path):
-        self.filepath = new_path
-        self.load()
+    def _save_static(self):
+        """保存静态数据到文件（开发模式专用）"""
+        if not self.dev_mode or not self.account_manager.is_developer():
+            raise PermissionError("只有开发者模式下的开发者账户才能保存静态数据")
+        static_ships = []
+        for ship in self.ships:
+            ship_dict = ship.to_dict()
+            for field in self.USER_STATE_FIELDS:
+                ship_dict.pop(field, None)
+            static_ships.append(ship_dict)
+        os.makedirs(os.path.dirname(self.static_path), exist_ok=True)
+        with open(self.static_path, 'w', encoding='utf-8') as f:
+            json.dump({"version": self.version, "ships": static_ships}, f, indent=2, ensure_ascii=False)
+        print(f"[静态数据] 已保存至 {self.static_path}")
+
+    def switch_account(self, new_account):
+        """切换账户，重新加载状态文件"""
+        self.state_path = f"data/users/{new_account}/ships_state.json"
+        self.load()  # 重新加载数据
+        self.data_changed.emit()
+
+    def export_static(self, export_path):
+        """将当前内存中的静态数据导出到指定文件（仅开发模式可用）"""
+        if not self.dev_mode:
+            raise PermissionError("非开发模式不能导出静态数据")
+        static_ships = []
+        for ship in self.ships:
+            # 排除用户状态字段
+            ship_dict = ship.to_dict()
+            for field in self.USER_STATE_FIELDS:
+                ship_dict.pop(field, None)
+            static_ships.append(ship_dict)
+        export_data = {
+            "version": self.version,
+            "ships": static_ships
+        }
+        with open(export_path, 'w', encoding='utf-8') as f:
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
+        print(f"静态数据已导出至 {export_path}")
 
     def export_csv(self, path):
         import pandas as pd
@@ -969,6 +1004,8 @@ class ShipManager(QObject):
         if not ships:
             raise Exception("CSV 文件中没有有效的舰船数据")
         self.ships = ships
+        if self.dev_mode:
+            self._save_static()
         self.save()
 
     def update_from_github(self, url: str, backup: bool = True) -> bool:
@@ -1003,37 +1040,14 @@ class ShipManager(QObject):
                 return False
 
             # 备份当前文件
-            if backup and os.path.exists(self.filepath):
-                backup_path = self.filepath + ".bak"
-                shutil.copy2(self.filepath, backup_path)
-                print(f"已备份当前数据到 {backup_path}")
+            if backup and os.path.exists(self.static_path):
+                shutil.copy2(self.static_path, self.static_path + ".bak")
+            with open(self.static_path, 'w', encoding='utf-8') as f:
+                json.dump(remote_data, f, indent=2, ensure_ascii=False)
 
-            # 数据迁移：确保新数据包含所有必要字段
-            ship_fields = set(Ship.__dataclass_fields__.keys())
-            migrated = []
-            for item in remote_ships:
-                # 补全缺失字段
-                for field in ship_fields:
-                    if field not in item:
-                        default_val = Ship.__dataclass_fields__[field].default
-                        item[field] = default_val
-                # 处理 drop_locations 字符串转列表
-                if isinstance(item.get('drop_locations'), str):
-                    item['drop_locations'] = item['drop_locations'].split(';') if item['drop_locations'] else []
-                # 仅保留合法字段
-                filtered_item = {k: v for k, v in item.items() if k in ship_fields}
-                migrated.append(filtered_item)
-
-            # 将新数据转换为 Ship 对象列表
-            new_ships = [Ship.from_dict(item) for item in migrated]
-
-            # **重要：合并用户数据**（保留用户的拥有状态、突破数等）
-            self._merge_user_data(new_ships)
-
-            # 替换当前数据
-            self.ships = new_ships
             self.version = remote_version
             self.save()
+            self.load()
             print("数据更新成功！")
             return True
 
@@ -1094,7 +1108,7 @@ class ShipManager(QObject):
         print("开始自动分配 game_order")
         for idx, ship in enumerate(self.ships, start=1):
             ship.game_order = idx
-        self.save()
+        self._save_static()
         print(f"已自动分配 game_order，范围 1-{len(self.ships)}")
 
     def get_latest_version(self):
@@ -1185,3 +1199,189 @@ class ShipManager(QObject):
                 if ship.level_120:
                     total += ship.tech_points_120
         return total
+
+    def _migrate_old_data(self):
+        """将旧的 ships.json 拆分为静态数据和用户状态文件"""
+        if not os.path.exists("ships.json"):
+            return
+        print("检测到旧数据文件 ships.json，正在自动迁移...")
+        try:
+            with open("ships.json", 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # 兼容旧格式
+            if isinstance(data, dict) and "version" in data and "ships" in data:
+                version = data["version"]
+                ships = data["ships"]
+            elif isinstance(data, list):
+                version = "0.0"
+                ships = data
+            else:
+                raise ValueError("无法识别的 ships.json 格式")
+
+            def clean_value(value, field_type):
+                """根据字段类型清洗单个值"""
+                if value is None:
+                    return None
+                if isinstance(value, str):
+                    # 清理常见无效字符串
+                    lower_val = value.lower().strip()
+                    if lower_val in ("nan", "null", "none", "na", ""):
+                        return None
+                    # 去除首尾空格
+                    value = value.strip()
+                    if value == "":
+                        return None
+                    # 根据目标类型尝试转换（如果是整数字段且值为数字字符串）
+                    if field_type == int:
+                        try:
+                            return int(float(value))
+                        except:
+                            return 0
+                    elif field_type == bool:
+                        return value.lower() in ("true", "1", "yes")
+                    elif field_type == list:
+                        return []      # 列表字段遇到字符串时置空（后续会再解析JSON，但先清空也可）
+                    elif field_type == dict:
+                        return {}
+                # 其他原样返回
+                return value
+
+            ship_fields = Ship.__dataclass_fields__
+            static_ships = []
+            state_list = []
+
+            for ship in ships:
+                # 字段清洗
+                cleaned_ship = {}
+                for field, value in ship.items():
+                    field_type = ship_fields[field].type if field in ship_fields else str
+                    cleaned = clean_value(value, field_type)
+                    if cleaned is not None:
+                        cleaned_ship[field] = cleaned
+                    # 对于未设置值的字段，后续补全逻辑会处理，这里不填 None
+                
+                # 改造日期处理
+                if not cleaned_ship.get("can_remodel", False) and "remodel_date" in cleaned_ship:
+                    cleaned_ship["remodel_date"] = ""
+                
+                # 分离数据
+                # 静态数据：复制所有字段，然后移除用户状态字段
+                static = cleaned_ship.copy()
+                for field in self.USER_STATE_FIELDS:
+                    static.pop(field, None)
+                static_ships.append(static)
+
+                # 用户状态：只保留 id 和状态字段
+                state = {"id": cleaned_ship["id"]}
+                for field in self.USER_STATE_FIELDS:
+                    if field in cleaned_ship:
+                        state[field] = cleaned_ship[field]
+                state_list.append(state)
+
+            static_data = {"version": version, "ships": static_ships}
+            state_data = {"states": state_list}
+
+            # 确保静态数据目录存在
+            os.makedirs(os.path.dirname(self.static_path), exist_ok=True)
+            with open(self.static_path, 'w', encoding='utf-8') as f:
+                json.dump(static_data, f, indent=2, ensure_ascii=False)
+
+            # 用户状态：需要确定当前账户名。如果没有账户，先创建默认账户
+            current_user = self.account_manager.get_current_account()
+            if not current_user:
+                current_user = "default"
+                self.account_manager.add_account(current_user, password="")
+                self.account_manager.set_current_account(current_user)
+            self.state_path = self._get_state_path()   # 获取正确路径
+            os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+            with open(self.state_path, 'w', encoding='utf-8') as f:
+                json.dump(state_data, f, indent=2, ensure_ascii=False)
+
+            # 备份旧文件
+            backup_path = "ships.json.bak"
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+            os.rename("ships.json", backup_path)
+            print("数据迁移成功！原文件已备份为 ships.json.bak")
+        except Exception as e:
+            print(f"数据迁移失败: {e}")
+            raise
+
+        # 迁移 accounts.json
+        if os.path.exists("accounts.json"):
+            print("检测到旧账户文件 accounts.json，正在迁移...")
+            try:
+                with open("accounts.json", 'r', encoding='utf-8') as f:
+                    accounts_data = json.load(f)
+                # 新路径
+                new_accounts_path = "data/users/accounts.json"
+                os.makedirs(os.path.dirname(new_accounts_path), exist_ok=True)
+                with open(new_accounts_path, 'w', encoding='utf-8') as f:
+                    json.dump(accounts_data, f, indent=2, ensure_ascii=False)
+                # 备份旧文件
+                backup_accounts = "accounts.json.bak"
+                if os.path.exists(backup_accounts):
+                    os.remove(backup_accounts)
+                os.rename("accounts.json", backup_accounts)
+                print("accounts.json 迁移成功")
+            except Exception as e:
+                print(f"accounts.json 迁移失败: {e}")
+
+        # 迁移 edit_log.json
+        if os.path.exists("edit_log.json"):
+            print("检测到旧日志文件 edit_log.json，正在迁移...")
+            try:
+                log_dir = "data/log"
+                os.makedirs(log_dir, exist_ok=True)
+                new_log_path = os.path.join(log_dir, "edit_log.json")
+                shutil.copy2("edit_log.json", new_log_path)
+                backup_log = "edit_log.json.bak"
+                if os.path.exists(backup_log):
+                    os.remove(backup_log)
+                os.rename("edit_log.json", backup_log)
+                print("edit_log.json 迁移成功")
+            except Exception as e:
+                print(f"edit_log.json 迁移失败: {e}")
+
+        #self._save_static()
+        #self.save()
+
+    def import_user_state(self, import_path, as_new_account=False, new_account_name=None):
+        """
+        导入用户状态文件
+        :param import_path: 要导入的文件路径
+        :param as_new_account: 是否创建新账户
+        :param new_account_name: 新账户名称（当 as_new_account=True 时必填）
+        """
+        if not os.path.exists(import_path):
+            raise FileNotFoundError("导入文件不存在")
+
+        if as_new_account:
+            if not new_account_name:
+                raise ValueError("创建新账户需要提供账户名")
+            # 创建新账户（密码可选，这里设为空）
+            success = self.account_manager.add_account(new_account_name, password="")
+            if not success:
+                raise Exception(f"账户 {new_account_name} 已存在")
+            # 复制状态文件到新账户的状态文件路径
+            new_state_path = f"ships_state_{new_account_name}.json"
+            shutil.copy2(import_path, new_state_path)
+            # 切换到新账户
+            self.account_manager.set_current_account(new_account_name)
+            self.state_path = new_state_path
+            self.load()
+        else:
+            # 覆盖当前账户
+            shutil.copy2(import_path, self.state_path)
+            self.load()
+
+        self.data_changed.emit()
+
+    def _get_state_path(self):
+        current_user = self.account_manager.get_current_account()
+        if current_user:
+            user_folder = os.path.join(self.user_dir, current_user)
+            os.makedirs(user_folder, exist_ok=True)
+            return os.path.join(user_folder, "ships_state.json")
+        return None

@@ -1,11 +1,16 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap, QFont
+from PySide6.QtWidgets import QVBoxLayout, QLabel, QProgressBar, QApplication, QSplashScreen
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from utils import resource_path
 
-class SplashScreen(QWidget):
+class SplashScreen(QSplashScreen):
     def __init__(self):
-        super().__init__()
+        pixmap = QPixmap(resource_path("app_icon.ico"))
+        #if pixmap.isNull():
+            # 创建一个空白画布，避免报错
+            #pixmap = QPixmap(400, 300)
+            #pixmap.fill(Qt.transparent)
+        super().__init__(pixmap)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(400, 300)
@@ -14,11 +19,9 @@ class SplashScreen(QWidget):
 
         # 应用图标
         icon_label = QLabel()
-        pixmap = QPixmap(resource_path("app_icon.ico"))
-        super().__init__(pixmap)
         if not pixmap.isNull():
-            pixmap = pixmap.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            icon_label.setPixmap(pixmap)
+            scaled_pixmap = pixmap.scaled(128, 128, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            icon_label.setPixmap(scaled_pixmap)
         icon_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(icon_label)
 
